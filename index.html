@@ -9,6 +9,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0ea5e9">
 <meta name="description" content="老年认知训练 — 看图识物">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <title>忆海拾光</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -92,12 +94,12 @@ body {
 /* ════════════════════════════════
    HOME SCREEN
    ════════════════════════════════ */
-#screen-home { justify-content: flex-start; overflow: hidden; }
-
+#screen-home { justify-content:flex-start; overflow:hidden; }
 .home-scroll {
-  flex: 1; width: 100%; max-width: 500px;
-  overflow-y: auto; -webkit-overflow-scrolling: touch;
-  padding: 0 16px;
+  flex:1; min-height:0;
+  width:100%; max-width:500px;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:0 16px;
 }
 
 /* ── Ocean-blue top bar ── */
@@ -250,24 +252,6 @@ body {
   color:var(--text2); display:flex; align-items:center; flex-shrink:0;
 }
 
-/* ── Image zone: full-width square, NEVER changes size ── */
-.img-zone {
-  width:100%; max-width:500px; flex-shrink:0;
-  padding:0 16px;
-}
-.target-card-wrap {
-  width:100%; aspect-ratio:1/1;
-  position:relative;
-}
-
-/* ── Middle zone: shared by opts and answer-panel ── */
-.mid-zone {
-  flex:1; min-height:0;
-  width:100%; max-width:500px;
-  padding:0 16px;
-  display:flex; flex-direction:column;
-}
-
 /* legacy .content used for slide animation */
 .content {
   flex:1; min-height:0;
@@ -277,17 +261,18 @@ body {
   transition:opacity .2s, transform .2s;
 }
 
-/* Image wrapper — same inset as mid-zone */
+/* Image wrapper */
 .img-zone {
   flex-shrink:0;
   padding:0 16px;
 }
 
-/* Mid zone: fills everything between image and btm */
+/* Mid zone: fills remaining space, clips overflow */
 .mid-zone {
   flex:1; min-height:0;
   padding:0 16px 8px;
   display:flex; flex-direction:column;
+  overflow:hidden;
 }
 
 /* Target card — 1:1 square, capped height, always fixed */
@@ -341,20 +326,21 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 @keyframes dp{0%,70%,100%{transform:scale(.5);opacity:.3}35%{transform:scale(1);opacity:1}}
 .instr-txt { font-size:14px; color:var(--text2); font-weight:500; }
 
-/* Options zone — explicit height matching image; buttons fill it */
+/* Options zone — fixed height = image height, clips overflow */
 .opts-zone {
   width:100%; flex-shrink:0;
   display:flex; flex-direction:column;
   background:var(--surf2); border-radius:var(--r);
   border:1px solid var(--bd); padding:8px;
   height:var(--opts-zone-h, auto);
+  overflow:hidden;
 }
 .opts {
-  flex:1;
   display:flex; flex-direction:column; gap:8px;
+  flex-shrink:0;
 }
 .opt {
-  flex:1; height:var(--opt-btn-h, auto);
+  flex:none; height:var(--opt-btn-h, 72px);
   background:var(--surf); border:2px solid var(--bd2);
   border-radius:var(--rsm); cursor:pointer; outline:none;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation;
@@ -423,18 +409,11 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 .detail-dot { width:6px; height:6px; border-radius:50%; background:var(--ocean); flex-shrink:0; margin-top:8px; }
 .detail-txt { font-size:var(--fs-hint, 15px); font-weight:500; color:var(--text2); line-height:1.5; letter-spacing:var(--ls-hint, 0); }
 
-/* Bottom — collapses when nxtbtn hidden */
+/* Bottom — fixed at bottom, always takes its space */
 .btm {
   width:100%; max-width:500px; flex-shrink:0;
-  padding: 0 16px;
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
   display:flex; flex-direction:column;
-}
-.btm:has(.nxtbtn.show) {
-  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
-}
-/* Fallback for Safari < 15.4 without :has */
-.btm.active {
-  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
 }
 /* Submit button — hidden (auto-submit replaces it) */
 .subbtn { display:none !important; }
@@ -555,7 +534,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v0.4</span>
+        <span class="home-version">v0.5</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -1519,79 +1498,13 @@ function toggleTheme(checkbox){
     });
 })();
 
-// ── PWA: inject manifest + register Service Worker ────────────
-(function(){
-  // Manifest
-  const manifest = {
-    name: '忆海拾光',
-    short_name: '忆海拾光',
-    description: '老年认知训练 — 看图识物',
-    start_url: '.',
-    display: 'standalone',
-    orientation: 'portrait',
-    background_color: '#f0f9ff',
-    theme_color: '#0ea5e9',
-    icons: [
-      { src: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0ea5e9"/><text y="320" x="256" text-anchor="middle" font-size="280" font-family="sans-serif">🧠</text></svg>`), sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
-    ]
-  };
-  const mBlob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
-  const mUrl  = URL.createObjectURL(mBlob);
-  const link  = document.createElement('link');
-  link.rel = 'manifest'; link.href = mUrl;
-  document.head.appendChild(link);
-
-  // Apple touch icon (inline SVG → PNG via canvas)
-  try {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0ea5e9"/><text y="320" x="256" text-anchor="middle" font-size="280" font-family="sans-serif">🧠</text></svg>`;
-    const img = new Image();
-    const svgBlob = new Blob([svg], {type:'image/svg+xml'});
-    img.onload = () => {
-      const cv = document.createElement('canvas'); cv.width = cv.height = 192;
-      cv.getContext('2d').drawImage(img, 0, 0, 192, 192);
-      const al = document.createElement('link');
-      al.rel = 'apple-touch-icon'; al.href = cv.toDataURL();
-      document.head.appendChild(al);
-    };
-    img.src = URL.createObjectURL(svgBlob);
-  } catch(e){}
-
-  // Service Worker (inline as Blob)
-  if ('serviceWorker' in navigator) {
-    const CACHE = 'yihai-v0.4';
-    const swCode = `
-const CACHE='${CACHE}';
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(['./']))
-    .then(() => self.skipWaiting())
-  );
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
-});
-self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-      if (!res || res.status !== 200 || res.type !== 'basic') return res;
-      const clone = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, clone));
-      return res;
-    }))
-  );
-});
-`;
-    const swBlob = new Blob([swCode], {type:'application/javascript'});
-    const swUrl  = URL.createObjectURL(swBlob);
-    navigator.serviceWorker.register(swUrl, {scope: './'})
-      .then(reg => console.log('[SW] registered', reg.scope))
-      .catch(e => console.warn('[SW] failed', e));
-  }
-})();
+// ── PWA: register Service Worker ──────────────────────────────
+// Skip SW registration in preview/sandbox environments
+if ('serviceWorker' in navigator && !location.hostname.includes('claudeusercontent')) {
+  navigator.serviceWorker.register('./sw.js', {scope: './'})
+    .then(r => console.log('[SW] registered', r.scope))
+    .catch(e => console.warn('[SW] failed', e));
+}
 </script>
 </body>
 </html>
