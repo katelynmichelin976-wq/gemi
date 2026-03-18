@@ -98,6 +98,7 @@ body {
   flex: 1; width: 100%; max-width: 500px;
   overflow-y: auto; -webkit-overflow-scrolling: touch;
   padding: 0 16px;
+  display: flex; flex-direction: column;
 }
 
 /* ── Ocean-blue top bar ── */
@@ -163,13 +164,17 @@ body {
 }
 .home-gear-btn:active { background: var(--surf2); }
 
-.home-section { width: 100%; padding: 16px 0 0; }
+.home-section { width: 100%; padding: 16px 0 0; flex: 1; display: flex; flex-direction: column; }
 
 /* Deck cards */
 .deck-grid {
+  flex: 1;
   display: flex; flex-direction: column; gap: 0;
   background: var(--surf); border-radius: var(--r);
   overflow: hidden; border: 1px solid var(--bd); box-shadow: var(--sh);
+}
+.deck-grid:empty, .deck-grid:has(.empty-state) {
+  background: none; border: none; box-shadow: none;
 }
 .deck-card {
   background: var(--surf); cursor: pointer;
@@ -547,8 +552,9 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 
 /* 空状态 */
 .empty-state {
+  flex: 1;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  padding: 60px 24px; gap:12px; text-align:center;
+  padding: 40px 24px; gap:12px; text-align:center;
 }
 .empty-state-icon { font-size:48px; line-height:1; }
 .empty-state-title { font-size:18px; font-weight:700; color:var(--text); }
@@ -566,7 +572,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v1.0</span>
+        <span class="home-version">v1.2</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -892,7 +898,7 @@ async function importYhspack(file) {
     for (let i = 0; i < deck.cards.length; i++) {
       const c = deck.cards[i];
       if (!c.name) continue;
-      const card = { id: c.id || String(i), name: c.name, img: '', details: [] };
+      const card = { id: c.id || String(i), name: c.name, img: '', audioUrl: '', details: [] };
 
       // 图片
       if (c.image) {
@@ -903,6 +909,20 @@ async function importYhspack(file) {
           card.img = URL.createObjectURL(blob);
         }
       }
+
+      // 录音
+      if (c.audio) {
+        const audFile = zip.file(c.audio);
+        if (audFile) {
+          const buf = await audFile.async('arraybuffer');
+          const ext = (c.audio.split('.').pop() || 'm4a').toLowerCase();
+          const mime = {'m4a':'audio/mp4','mp4':'audio/mp4','mp3':'audio/mpeg',
+                        'ogg':'audio/ogg','webm':'audio/webm','aac':'audio/aac'}[ext] || 'audio/mp4';
+          const blob = new Blob([buf], { type: mime });
+          card.audioUrl = URL.createObjectURL(blob);
+        }
+      }
+
       cards.push(card);
     }
 
@@ -1139,7 +1159,17 @@ function speak(text, delay = 0, onend = null) {
   else go();
 }
 
-// Speak an array of strings one after another, then call onDone
+// 播放答案语音：优先录音，无录音降级 TTS
+function playAnswer(q, onend) {
+  if (q.audioUrl) {
+    const audio = new Audio(q.audioUrl);
+    audio.onended = onend || null;
+    audio.onerror = () => { speak(q.name, 0, onend); };
+    audio.play().catch(() => { speak(q.name, 0, onend); });
+  } else {
+    speak(q.name, 0, onend);
+  }
+}
 function speakSequence(items, onDone, pause = 350) {
   if (!items || items.length === 0) { if (onDone) onDone(); return; }
   const [first, ...rest] = items;
@@ -1202,16 +1232,13 @@ function render() {
   document.getElementById('answer-panel').className = 'answer-panel';
   const _nb=document.getElementById('nxtbtn'); _nb.className='nxtbtn'; document.querySelector('.btm').classList.remove('active'); stopNRing();
 
-  // Set button height = image height / OPT_COUNT, opts-zone height = image height
+  // 选项区固定高度：每个按钮固定高度，不跟图片联动，删除选项后其余按钮高度不变
   requestAnimationFrame(() => {
-    const imgH = document.querySelector('.target-card')?.offsetHeight || 0;
-    if (imgH > 0) {
-      const gap = 8, pad = 16, n = OPT_COUNT;
-      const zoneH = imgH;
-      const btnH = Math.floor((zoneH - pad - gap * (n - 1)) / n);
-      document.documentElement.style.setProperty('--opts-zone-h', `${zoneH}px`);
-      document.documentElement.style.setProperty('--opt-btn-h', `${btnH}px`);
-    }
+    const gap = 8, pad = 16, n = OPT_COUNT;
+    const btnH = 72;  // 固定按钮高度px
+    const zoneH = btnH * n + gap * (n - 1) + pad;
+    document.documentElement.style.setProperty('--opts-zone-h', `${zoneH}px`);
+    document.documentElement.style.setProperty('--opt-btn-h', `${btnH}px`);
   });
   stopAllPromptTimers();
   startSelectTimer();
@@ -1240,18 +1267,15 @@ function revealBrowse(q) {
   nb0.classList.add('show');
   document.querySelector('.btm').classList.add('active');
 
-  // speak name + hints, then start countdown
+  // 优先播放录音，无录音用 TTS
   const startCountdown = () => startNRing();
-
-  setTimeout(()=>{
-    if (hints.length) {
-      speak(answerName, 0, () => {
-        setTimeout(() => speakSequence(hints, startCountdown), 400);
-      });
-    } else {
-      speak(answerName, 0, () => { setTimeout(startCountdown, 300); });
-    }
-  }, SPEAK_DELAY);
+  if (hints.length) {
+    playAnswer(q, () => {
+      setTimeout(() => speakSequence(hints, startCountdown), 400);
+    });
+  } else {
+    playAnswer(q, () => { setTimeout(startCountdown, 300); });
+  }
 }
 
 // ── Select ─────────────────────────────────────────────────────
@@ -1342,18 +1366,15 @@ function revealAnswer() {
   nb2.classList.add('show');
   document.querySelector('.btm').classList.add('active');
 
-  // speak, then start countdown
+  // 优先播放录音，无录音用 TTS
   const startCountdown = () => startNRing();
-
-  setTimeout(()=>{
-    if (hints.length) {
-      speak(answerName, 0, () => {
-        setTimeout(() => speakSequence(hints, startCountdown), 400);
-      });
-    } else {
-      speak(answerName, 0, () => { setTimeout(startCountdown, 300); });
-    }
-  }, SPEAK_DELAY);
+  if (hints.length) {
+    playAnswer(q, () => {
+      setTimeout(() => speakSequence(hints, startCountdown), 400);
+    });
+  } else {
+    playAnswer(q, () => { setTimeout(startCountdown, 300); });
+  }
 }
 
 // ── Next ───────────────────────────────────────────────────────
@@ -1625,7 +1646,7 @@ function toggleTheme(checkbox){
 
   // Service Worker (inline as Blob)
   if ('serviceWorker' in navigator) {
-    const CACHE = 'yihai-v1.0';
+    const CACHE = 'yihai-v1.2';
     const swCode = `
 const CACHE='${CACHE}';
 self.addEventListener('install', e => {
