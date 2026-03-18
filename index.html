@@ -70,6 +70,7 @@ body {
   font-family: -apple-system,'PingFang SC','Hiragino Sans GB',sans-serif;
   -webkit-font-smoothing: antialiased;
   height: 100dvh;
+  min-height: -webkit-fill-available;
   position: relative;
 }
 
@@ -203,7 +204,7 @@ body {
 /* Start footer — browse (secondary) + start (primary) */
 .home-footer {
   width: 100%; max-width: 500px; flex-shrink: 0;
-  padding: 14px 16px calc(12px + env(safe-area-inset-bottom, 20px));
+  padding: 14px 16px calc(12px + env(safe-area-inset-bottom, 34px));
   background: var(--bg);
 }
 .footer-btns {
@@ -438,11 +439,11 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
   display:flex; flex-direction:column;
 }
 .btm:has(.nxtbtn.show) {
-  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 34px));
 }
 /* Fallback for Safari < 15.4 without :has */
 .btm.active {
-  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 34px));
 }
 /* Submit button — hidden (auto-submit replaces it) */
 .subbtn { display:none !important; }
@@ -503,7 +504,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
   width:100%; max-width:500px;
   background:var(--surf); border-radius:24px 24px 0 0;
   border-top:0.5px solid var(--bd);
-  padding-bottom: calc(16px + env(safe-area-inset-bottom, 16px));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 34px));
   transition:transform .32s cubic-bezier(.32,1,.36,1);
   display:flex; flex-direction:column;
   max-height:82vh;
@@ -585,7 +586,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v1.9</span>
+        <span class="home-version">v2.0</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
