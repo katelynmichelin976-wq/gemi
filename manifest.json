@@ -2,7 +2,7 @@
   "name": "忆海拾光",
   "short_name": "忆海拾光",
   "description": "老年认知训练 — 看图识物",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f0f9ff",
