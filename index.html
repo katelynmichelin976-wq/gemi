@@ -327,7 +327,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 /* Real photo: fills square, cropped to center */
 .target-img img {
   width:100%; height:100%;
-  object-fit:cover; object-position:center;
+  object-fit:contain; object-position:center;
   display:block; border-radius:var(--r);
 }
 @keyframes imgPop{from{transform:scale(.78);opacity:0}to{transform:scale(1);opacity:1}}
@@ -566,7 +566,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v0.7</span>
+        <span class="home-version">v1.0</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -1625,7 +1625,7 @@ function toggleTheme(checkbox){
 
   // Service Worker (inline as Blob)
   if ('serviceWorker' in navigator) {
-    const CACHE = 'yihai-v0.4';
+    const CACHE = 'yihai-v1.0';
     const swCode = `
 const CACHE='${CACHE}';
 self.addEventListener('install', e => {
