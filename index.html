@@ -9,8 +9,6 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0ea5e9">
 <meta name="description" content="老年认知训练 — 看图识物">
-<link rel="manifest" href="./manifest.json">
-<link rel="apple-touch-icon" href="./icon-192.png">
 <title>忆海拾光</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -94,12 +92,12 @@ body {
 /* ════════════════════════════════
    HOME SCREEN
    ════════════════════════════════ */
-#screen-home { justify-content:flex-start; overflow:hidden; }
+#screen-home { justify-content: flex-start; overflow: hidden; }
+
 .home-scroll {
-  flex:1; min-height:0;
-  width:100%; max-width:500px;
-  overflow-y:auto; -webkit-overflow-scrolling:touch;
-  padding:0 16px;
+  flex: 1; width: 100%; max-width: 500px;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 0 16px;
 }
 
 /* ── Ocean-blue top bar ── */
@@ -252,6 +250,24 @@ body {
   color:var(--text2); display:flex; align-items:center; flex-shrink:0;
 }
 
+/* ── Image zone: full-width square, NEVER changes size ── */
+.img-zone {
+  width:100%; max-width:500px; flex-shrink:0;
+  padding:0 16px;
+}
+.target-card-wrap {
+  width:100%; aspect-ratio:1/1;
+  position:relative;
+}
+
+/* ── Middle zone: shared by opts and answer-panel ── */
+.mid-zone {
+  flex:1; min-height:0;
+  width:100%; max-width:500px;
+  padding:0 16px;
+  display:flex; flex-direction:column;
+}
+
 /* legacy .content used for slide animation */
 .content {
   flex:1; min-height:0;
@@ -261,18 +277,17 @@ body {
   transition:opacity .2s, transform .2s;
 }
 
-/* Image wrapper */
+/* Image wrapper — same inset as mid-zone */
 .img-zone {
   flex-shrink:0;
   padding:0 16px;
 }
 
-/* Mid zone: fills remaining space, clips overflow */
+/* Mid zone: fills everything between image and btm */
 .mid-zone {
   flex:1; min-height:0;
   padding:0 16px 8px;
   display:flex; flex-direction:column;
-  overflow:hidden;
 }
 
 /* Target card — 1:1 square, capped height, always fixed */
@@ -309,11 +324,11 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
   overflow:hidden;
   animation:imgPop .38s cubic-bezier(.34,1.56,.64,1);
 }
-/* Real photo: show full image with letterboxing */
+/* Real photo: fills square, cropped to center */
 .target-img img {
   width:100%; height:100%;
-  object-fit:contain;
-  display:block;
+  object-fit:cover; object-position:center;
+  display:block; border-radius:var(--r);
 }
 @keyframes imgPop{from{transform:scale(.78);opacity:0}to{transform:scale(1);opacity:1}}
 .instr {
@@ -326,21 +341,20 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 @keyframes dp{0%,70%,100%{transform:scale(.5);opacity:.3}35%{transform:scale(1);opacity:1}}
 .instr-txt { font-size:14px; color:var(--text2); font-weight:500; }
 
-/* Options zone — fixed height = image height, clips overflow */
+/* Options zone — explicit height matching image; buttons fill it */
 .opts-zone {
   width:100%; flex-shrink:0;
   display:flex; flex-direction:column;
   background:var(--surf2); border-radius:var(--r);
   border:1px solid var(--bd); padding:8px;
   height:var(--opts-zone-h, auto);
-  overflow:hidden;
 }
 .opts {
+  flex:1;
   display:flex; flex-direction:column; gap:8px;
-  flex-shrink:0;
 }
 .opt {
-  flex:none; height:var(--opt-btn-h, 72px);
+  flex:1; height:var(--opt-btn-h, auto);
   background:var(--surf); border:2px solid var(--bd2);
   border-radius:var(--rsm); cursor:pointer; outline:none;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation;
@@ -409,11 +423,18 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 .detail-dot { width:6px; height:6px; border-radius:50%; background:var(--ocean); flex-shrink:0; margin-top:8px; }
 .detail-txt { font-size:var(--fs-hint, 15px); font-weight:500; color:var(--text2); line-height:1.5; letter-spacing:var(--ls-hint, 0); }
 
-/* Bottom — fixed at bottom, always takes its space */
+/* Bottom — collapses when nxtbtn hidden */
 .btm {
   width:100%; max-width:500px; flex-shrink:0;
-  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
+  padding: 0 16px;
   display:flex; flex-direction:column;
+}
+.btm:has(.nxtbtn.show) {
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
+}
+/* Fallback for Safari < 15.4 without :has */
+.btm.active {
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 20px));
 }
 /* Submit button — hidden (auto-submit replaces it) */
 .subbtn { display:none !important; }
@@ -521,6 +542,17 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 
 /* Icon SVG helper */
 .ico { display:inline-flex; align-items:center; justify-content:center; }
+
+@keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+/* 空状态 */
+.empty-state {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding: 60px 24px; gap:12px; text-align:center;
+}
+.empty-state-icon { font-size:48px; line-height:1; }
+.empty-state-title { font-size:18px; font-weight:700; color:var(--text); }
+.empty-state-sub { font-size:14px; color:var(--text2); line-height:1.6; }
 </style>
 </head>
 <body>
@@ -543,6 +575,15 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
         </button>
       </div>
       <div class="home-icons">
+        <!-- import yhspack -->
+        <label class="home-gear-btn" style="cursor:pointer" aria-label="导入牌组" title="导入 .yhspack">
+          <input type="file" accept=".yhspack" style="display:none" onchange="importYhspack(this.files[0]).then(()=>this.value='')">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </label>
         <!-- settings gear -->
         <button class="home-gear-btn" onclick="openSettings()" aria-label="设置">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -556,10 +597,6 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-section">
       <div class="deck-grid" id="deck-grid">
         <!-- rendered by JS from DECKS_META -->
-      </div>
-      <div style="padding:12px 16px">
-        <input type="file" id="import-json" accept=".json,.zip" style="display:none" onchange="importJsonDeck(event)">
-        <button class="browse-btn" style="width:100%;background:var(--ocean-bg);color:var(--ocean);border:1.5px dashed var(--ocean)" onclick="document.getElementById('import-json').click()">📥 导入 JSON 牌组</button>
       </div>
     </div>
   </div>
@@ -763,123 +800,152 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 </div>
 
 <script>
-// ── Card data (JSON — easy to extend) ─────────────────────────
-// Format: { img, name, options:[4 strings], correct:0-3, details:[1-3 strings], voice }
-// voice: text read aloud on answer reveal (defaults to name if omitted)
+// ── 导入牌组存储（localStorage + 内存）─────────────────────────
+// 内部卡片格式：{ id, img, name, options:[4项], correct:0-3, details:[] }
+// options 和 correct 在 getDeck() 时动态生成，img 为 blob URL
 
-const DECKS = {
+const DECKS = {};        // key → cards[]，运行时填充
+let DECKS_META = [];     // [{ key, name }]，运行时从 localStorage 恢复
 
-  // ── 日常用品 (20 cards) ──────────────────────────────────────
-  daily: [
-    { img:'🥤', name:'杯子',   options:['碗','盘子','杯子','筷子'],   correct:2, details:['用来喝水的','有把手的叫茶杯','喝完记得放好'] },
-    { img:'🍜', name:'碗',     options:['盘子','碗','杯子','锅'],      correct:1, details:['用来盛饭盛汤的','圆圆的，比盘子深','吃饭用'] },
-    { img:'🥢', name:'筷子',   options:['勺子','叉子','筷子','刀'],    correct:2, details:['用来夹菜吃饭的','两根一起用','中国人常用'] },
-    { img:'🥄', name:'勺子',   options:['筷子','叉子','刀','勺子'],    correct:3, details:['用来喝汤的','圆圆的头，长长的柄','也可以舀粥'] },
-    { img:'🪥', name:'牙刷',   options:['梳子','牙刷','毛巾','镜子'],  correct:1, details:['用来刷牙的','每天早晚都要用','保持牙齿健康'] },
-    { img:'🧣', name:'毛巾',   options:['毛巾','手帕','围巾','毯子'],  correct:0, details:['用来擦脸擦手的','洗完脸用它擦干','软软的'] },
-    { img:'🧼', name:'香皂',   options:['牙膏','香皂','洗发水','面霜'],correct:1, details:['洗手用的','能去掉脏东西','用完要冲干净'] },
-    { img:'💇', name:'梳子',   options:['牙刷','剪刀','梳子','镜子'],  correct:2, details:['用来梳头发的','早上起来梳头','让头发整整齐齐'] },
-    { img:'🪞', name:'镜子',   options:['窗户','画框','镜子','门'],    correct:2, details:['可以照自己的脸','照镜子看看整不整齐','镜子里的是自己'] },
-    { img:'👓', name:'眼镜',   options:['太阳镜','眼镜','放大镜','望远镜'],correct:1, details:['戴上可以看清楚','近视的人需要戴','放在固定地方别丢'] },
-    { img:'🔑', name:'钥匙',   options:['硬币','钥匙','戒指','剪刀'],  correct:1, details:['用来开门的','出门要带好钥匙','有好几种形状'] },
-    { img:'📱', name:'手机',   options:['遥控器','手机','平板','电话'],correct:1, details:['可以打电话','也可以看视频','充电才能用'] },
-    { img:'📺', name:'遥控器', options:['手机','遥控器','计算器','键盘'],correct:1, details:['用来开电视的','换台按上下键','音量也能调'] },
-    { img:'☂️', name:'雨伞',   options:['扇子','雨伞','拐杖','帽子'],  correct:1, details:['下雨天撑伞','能挡雨不被淋湿','出门看天气'] },
-    { img:'👛', name:'钱包',   options:['书包','钱包','袋子','盒子'],  correct:1, details:['装钱用的','出门要带上','里面放钱和卡'] },
-    { img:'🩴', name:'拖鞋',   options:['运动鞋','皮鞋','拖鞋','靴子'],correct:2, details:['在家里穿的鞋','软软的很舒服','出门换鞋'] },
-    { img:'🛏️', name:'枕头',   options:['被子','毯子','枕头','床垫'],  correct:2, details:['睡觉时枕着','放在床头','软软的'] },
-    { img:'🛌', name:'被子',   options:['枕头','毯子','被子','床单'],  correct:2, details:['睡觉时盖着暖和','冬天要盖厚被子','早上叠整齐'] },
-    { img:'💊', name:'药瓶',   options:['罐子','茶叶','药瓶','调料'],  correct:2, details:['里面装着药','按时吃药很重要','不能乱吃'] },
-    { img:'🫖', name:'水壶',   options:['茶杯','水壶','锅','桶'],      correct:1, details:['用来烧水的','水烧开了再喝','热水壶要小心'] },
-  ],
+// 备用词库：牌组卡片不足4张时补充干扰项
+const FALLBACK_WORDS = ['苹果','香蕉','椅子','水壶','钥匙','手机','眼镜','雨伞','毛巾','牙刷',
+  '西瓜','胡萝卜','土豆','玉米','火车','汽车','飞机','冰箱','电视','桌子'];
 
-  // ── 水果 (12 cards) ─────────────────────────────────────────
-  fruit: [
-    { img:'./images/苹果.jpg', name:'苹果',   options:['梨','西瓜','西红柿','苹果'],  correct:3, details:['红色圆圆的','可以直接吃','甜甜的很好吃'] },
-    { img:'./images/香蕉.jpg', name:'香蕉',   options:['香蕉','黄瓜','玉米','芒果'],  correct:0, details:['黄色弯弯的','剥皮吃','软软的很甜'] },
-    { img:'./images/橙子.jpg', name:'橙子',   options:['苹果','橘子','橙子','柠檬'],  correct:2, details:['橙色圆圆的','味道很甜','剥皮吃'] },
-    { img:'./images/葡萄.jpg', name:'葡萄',   options:['蓝莓','草莓','葡萄','樱桃'],  correct:2, details:['紫色小小的','一串一串的','可以酿酒'] },
-    { img:'./images/西瓜.jpg', name:'西瓜',   options:['哈密瓜','西瓜','冬瓜','南瓜'],correct:1, details:['绿色大大的','红色的瓤','夏天吃很解渴'] },
-    { img:'./images/草莓.jpg', name:'草莓',   options:['西瓜','苹果','草莓','橙子'],  correct:2, details:['红色小小的','表面有小种子','味道甜美'] },
-    { img:'./images/梨.jpg', name:'梨',     options:['苹果','梨','桃子','柠檬'],    correct:1, details:['黄色的','水分很多','清甜可口'] },
-    { img:'./images/桃子.jpg', name:'桃子',   options:['苹果','杏子','桃子','李子'],  correct:2, details:['粉红色的','软软的','桃子皮有点毛'] },
-    { img:'./images/柠檬.jpg', name:'柠檬',   options:['橙子','香蕉','菠萝','柠檬'],  correct:3, details:['黄色的','味道很酸','泡水喝'] },
-    { img:'./images/芒果.jpg', name:'芒果',   options:['木瓜','芒果','柿子','橙子'],  correct:1, details:['黄色的','很香甜','热带水果'] },
-    { img:'./images/樱桃.jpg', name:'樱桃',   options:['草莓','樱桃','枸杞','葡萄'],  correct:1, details:['红色小小的','有个小梗','两个一对'] },
-    { img:'./images/菠萝.jpg', name:'菠萝',   options:['椰子','菠萝','榴莲','火龙果'],correct:1, details:['黄色的','外面有刺','味道香甜'] },
-  ],
-
-  // ── 蔬菜 (12 cards) ─────────────────────────────────────────
-  veg: [
-    { img:'🍅', name:'西红柿', options:['苹果','西瓜','西红柿','草莓'],correct:2, details:['红色圆圆的','炒鸡蛋很好吃','也叫番茄'] },
-    { img:'🥒', name:'黄瓜',   options:['西葫芦','黄瓜','苦瓜','丝瓜'],correct:1, details:['绿色长长的','可以生吃','凉拌很清爽'] },
-    { img:'🥕', name:'胡萝卜', options:['白萝卜','胡萝卜','红薯','土豆'],correct:1, details:['橙色长长的','营养很好','可以生吃炒着吃'] },
-    { img:'🥬', name:'白菜',   options:['菠菜','白菜','生菜','卷心菜'],correct:1, details:['绿白色的','一层一层的','炒着吃或做汤'] },
-    { img:'🥔', name:'土豆',   options:['地瓜','芋头','土豆','红薯'],  correct:2, details:['黄褐色圆圆的','炒着吃','也能做土豆泥'] },
-    { img:'🍆', name:'茄子',   options:['紫薯','茄子','青椒','洋葱'],  correct:1, details:['紫色长长的','炒着吃','烧茄子很好吃'] },
-    { img:'🫑', name:'青椒',   options:['黄椒','红椒','青椒','辣椒'],  correct:2, details:['绿色的','炒菜用','不太辣'] },
-    { img:'🧅', name:'洋葱',   options:['大蒜','洋葱','土豆','萝卜'],  correct:1, details:['黄色圆圆的','切了会流眼泪','炒菜很香'] },
-    { img:'🫘', name:'豆腐',   options:['豆腐','鸡蛋','粉条','面条'],  correct:0, details:['白色软软的','用大豆做的','可以炒可以煮汤'] },
-    { img:'🌽', name:'玉米',   options:['香蕉','玉米','竹笋','甘蔗'],  correct:1, details:['黄色长长的','一粒一粒的','可以煮着吃'] },
-    { img:'🎃', name:'南瓜',   options:['西瓜','冬瓜','南瓜','哈密瓜'],correct:2, details:['橙黄色圆圆的','熬粥喝很甜','秋天的蔬菜'] },
-    { img:'🥦', name:'菠菜',   options:['芹菜','韭菜','菠菜','油菜'],  correct:2, details:['绿色叶子','炒着吃','营养丰富'] },
-  ],
-
-  // ── 交通工具 (12 cards) ──────────────────────────────────────
-  transport: [
-    { img:'🚌', name:'公交车', options:['火车','公交车','地铁','大巴'], correct:1, details:['坐公交车出门','有很多座位','站牌等车'] },
-    { img:'🚕', name:'出租车', options:['私家车','出租车','救护车','警车'],correct:1, details:['打车用的','黄色的','叫滴滴也行'] },
-    { img:'🚇', name:'地铁',   options:['火车','轻轨','地铁','高铁'],  correct:2, details:['在地下跑的火车','不堵车','要买票进站'] },
-    { img:'🚲', name:'自行车', options:['摩托车','自行车','电动车','三轮车'],correct:1, details:['两个轮子','骑着走','要蹬脚踏板'] },
-    { img:'🛵', name:'电动车', options:['摩托车','自行车','电动车','汽车'],correct:2, details:['充电骑的车','比自行车省力','记得戴头盔'] },
-    { img:'🚗', name:'小汽车', options:['公交车','卡车','小汽车','面包车'],correct:2, details:['四个轮子','坐车出门','需要驾照'] },
-    { img:'🚂', name:'火车',   options:['高铁','地铁','火车','有轨电车'],correct:2, details:['铁轨上跑的','可以去远处','需要买票'] },
-    { img:'✈️', name:'飞机',   options:['直升机','飞机','无人机','热气球'],correct:1, details:['在天上飞','去很远的地方','要提前买票'] },
-    { img:'🏍️', name:'摩托车', options:['自行车','电动车','摩托车','三轮车'],correct:2, details:['两个轮子','比自行车快','要戴头盔'] },
-    { img:'🚑', name:'救护车', options:['警车','消防车','救护车','校车'],correct:2, details:['白色的','生病了叫救护车','120是它的号码'] },
-    { img:'🚒', name:'消防车', options:['救护车','洒水车','消防车','警车'],correct:2, details:['红色的','着火了来救火','119是它的号码'] },
-    { img:'🚢', name:'轮船',   options:['帆船','游艇','轮船','渡船'],  correct:2, details:['在水上开的大船','可以运货运人','声音很响'] },
-  ],
-
-  // ── 家具 (10 cards) ──────────────────────────────────────────
-  furniture: [
-    { img:'🛏️', name:'床',     options:['沙发','床','椅子','躺椅'],    correct:1, details:['晚上睡觉的地方','有枕头被子','睡个好觉'] },
-    { img:'🛋️', name:'沙发',   options:['椅子','沙发','床','凳子'],    correct:1, details:['坐着休息的','软软的','看电视坐沙发'] },
-    { img:'🪑', name:'椅子',   options:['沙发','凳子','椅子','床'],    correct:2, details:['坐着用的','有靠背','吃饭坐椅子'] },
-    { img:'🍽️', name:'桌子',   options:['床','台子','桌子','架子'],    correct:2, details:['吃饭放东西用的','有四条腿','饭菜放桌上'] },
-    { img:'🗄️', name:'衣柜',   options:['书柜','冰箱','衣柜','橱柜'],  correct:2, details:['放衣服的柜子','衣服挂进去','打开门拿衣服'] },
-    { img:'🧊', name:'冰箱',   options:['洗衣机','冰箱','微波炉','烤箱'],correct:1, details:['放食物保鲜的','冷冷的','食物放进去不容易坏'] },
-    { img:'🫧', name:'洗衣机', options:['冰箱','洗碗机','洗衣机','烘干机'],correct:2, details:['洗衣服用的','放洗衣粉','衣服脏了放进去'] },
-    { img:'📺', name:'电视',   options:['电脑','投影仪','电视','显示器'],correct:2, details:['看节目用的','遥控器控制','新闻电视剧都能看'] },
-    { img:'❄️', name:'空调',   options:['风扇','暖气','空调','加湿器'], correct:2, details:['热了吹冷气','冷了吹热气','记得设温度'] },
-    { img:'📡', name:'微波炉', options:['烤箱','微波炉','电饭锅','电热壶'],correct:1, details:['热饭菜用的','放进去转一转','很方便'] },
-  ],
-
-  // ── 随机 ────────────────────────────────────────────────────
-  random: [],
-};
-
-// ── Deck metadata (for home screen display) ───────────────────
-const DECKS_META = [
-  { key:'daily',     name:'日常用品' },
-  { key:'fruit',     name:'水果'     },
-  { key:'veg',       name:'蔬菜'     },
-  { key:'transport', name:'交通工具' },
-  { key:'furniture', name:'家具'     },
-];
-
-function getDeck(key) {
-  if (key === 'random') {
-    const all = Object.entries(DECKS)
-      .filter(([k]) => k !== 'random')
-      .flatMap(([, cards]) => cards);
-    return all.sort(() => Math.random() - .5).slice(0, 8);
+// 运行时生成 options + correct（始终生成4个选项供 OPT_COUNT 取用）
+function buildOptions(card, allCards) {
+  const pool = allCards
+    .filter(c => c.id !== card.id)
+    .map(c => c.name);
+  // 补备用词库
+  FALLBACK_WORDS.forEach(w => { if(!pool.includes(w) && w !== card.name) pool.push(w); });
+  // Fisher-Yates shuffle 取3个干扰项
+  for(let k = pool.length-1; k > 0; k--){
+    const r = Math.floor(Math.random()*(k+1));
+    [pool[k], pool[r]] = [pool[r], pool[k]];
   }
-  return DECKS[key] || [];
+  const distractors = pool.slice(0, 3);
+  // 正确答案放 index 0，render 里会再整体 shuffle
+  const options = [card.name, ...distractors];
+  return { options, correct: 0 };
 }
 
+function getDeck(key) {
+  const raw = DECKS[key] || [];
+  return raw.map(card => {
+    const { options, correct } = buildOptions(card, raw);
+    return { ...card, options, correct };
+  });
+}
+
+// ── localStorage 持久化 ──────────────────────────────────────────
+const LS_INDEX = 'yihai_decks_index';   // 存 [{key,name}] 数组
+const LS_DECK_PREFIX = 'yihai_deck_';   // + key 存卡片数组（不含 blob URL）
+
+function saveDeckIndex() {
+  localStorage.setItem(LS_INDEX, JSON.stringify(DECKS_META));
+}
+
+// 卡片存 localStorage 时不存 img（blob URL 跨页面失效），只存 id/name/imgKey
+// imgKey 用于从 IndexedDB 读取图片（当前阶段跳过，img 设为空，重新导入才有图）
+function saveDeckCards(key, cards) {
+  const slim = cards.map(c => ({ id: c.id, name: c.name }));
+  localStorage.setItem(LS_DECK_PREFIX + key, JSON.stringify(slim));
+}
+
+function restoreDecks() {
+  try {
+    const idx = JSON.parse(localStorage.getItem(LS_INDEX) || '[]');
+    DECKS_META = idx;
+    idx.forEach(({ key }) => {
+      const raw = JSON.parse(localStorage.getItem(LS_DECK_PREFIX + key) || '[]');
+      // img 恢复为空占位（blob URL 已失效），需重新导入才有图片
+      DECKS[key] = raw.map(c => ({ ...c, img: '', details: [] }));
+    });
+  } catch(e) { console.warn('restoreDecks failed', e); }
+}
+
+// ── .yhspack 导入 ────────────────────────────────────────────────
+function ldScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function importYhspack(file) {
+  try {
+    await ldScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+
+    const jsonFile = zip.file('deck.json');
+    if (!jsonFile) { alert('格式错误：未找到 deck.json'); return; }
+    const deckData = JSON.parse(await jsonFile.async('string'));
+    const deck = deckData.deck;
+    if (!deck || !deck.cards) { alert('格式错误：deck.cards 不存在'); return; }
+
+    const key = deck.id || ('deck_' + Date.now());
+    const name = deck.name || file.name.replace('.yhspack','');
+    const cards = [];
+
+    for (let i = 0; i < deck.cards.length; i++) {
+      const c = deck.cards[i];
+      if (!c.name) continue;
+      const card = { id: c.id || String(i), name: c.name, img: '', details: [] };
+
+      // 图片
+      if (c.image) {
+        const imgFile = zip.file(c.image);
+        if (imgFile) {
+          const buf = await imgFile.async('arraybuffer');
+          const blob = new Blob([buf], { type: 'image/jpeg' });
+          card.img = URL.createObjectURL(blob);
+        }
+      }
+      cards.push(card);
+    }
+
+    if (!cards.length) { alert('未找到有效卡片'); return; }
+
+    // 写入内存
+    DECKS[key] = cards;
+    // 更新或追加 meta
+    const existing = DECKS_META.findIndex(m => m.key === key);
+    if (existing >= 0) DECKS_META[existing] = { key, name };
+    else DECKS_META.push({ key, name });
+
+    // 持久化（只存 id+name，blob URL 不存）
+    saveDeckIndex();
+    saveDeckCards(key, cards);
+
+    // 刷新首页列表，选中刚导入的牌组
+    renderDeckList();
+    updateDeckStats();
+    const el = document.querySelector(`.deck-card[data-deck="${key}"]`);
+    if (el) selectDeck(el);
+
+    showImportToast(name, cards.length);
+  } catch(e) {
+    alert('导入失败：' + e.message);
+    console.error(e);
+  }
+}
+
+function showImportToast(name, count) {
+  const t = document.createElement('div');
+  t.textContent = `✓ 已导入「${name}」${count} 张`;
+  t.style.cssText = `position:fixed;bottom:calc(100px + env(safe-area-inset-bottom,20px));left:50%;
+    transform:translateX(-50%);background:var(--text);color:var(--bg);
+    padding:10px 20px;border-radius:20px;font-size:14px;font-weight:600;
+    z-index:999;white-space:nowrap;animation:toastIn .3s ease`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+
 // ── Session state ──────────────────────────────────────────────
-let currentDeck = 'fruit';
+let currentDeck = null;
 let currentMode = 'quiz';
 let Qs = [];
 let qIdx = 0, sel = null, revealed = false, wrongCount = 0;
@@ -891,95 +957,22 @@ let OPT_COUNT = 3;  // 显示选项数量（2-4）
 let PHRASE_SELECT = '请选择答案';
 let PHRASE_WRONG  = '不要着急，再试一次';
 
-// ═══════════════════════════════════════════
-// ═══════════════════════════════════════════
-// JSON 导入 (Blob -> Base64)
-// ═══════════════════════════════════════════
-async function importJsonDeck(e){
-  const file=e.target.files[0];if(!file)return;
-  try{
-    let json,mediaFiles={};
-    if(file.name.endsWith('.zip')){
-      if(!window.JSZip){
-        await new Promise((resolve,reject)=>{
-          const s=document.createElement('script');
-          s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-          s.onload=resolve;s.onerror=reject;
-          document.head.appendChild(s);
-        });
-      }
-      const zip=await window.JSZip.loadAsync(file);
-      const jsonFile=Object.keys(zip.files).find(f=>f.endsWith('.json'));
-      if(!jsonFile){alert('ZIP中未找到JSON文件');return;}
-      json=JSON.parse(await zip.file(jsonFile).async('string'));
-      // 提取媒体文件为 Base64
-      const mediaEntries=Object.entries(zip.files).filter(([path])=>path.startsWith('media/') && !path.endsWith('/'));
-      for(const [path,fileData] of mediaEntries){
-        const name=path.replace('media/','');
-        const blob=await fileData.async('blob');
-        mediaFiles[name]=await new Promise(resolve=>{
-          const r=new FileReader();
-          r.onload=()=>resolve(r.result);
-          r.readAsDataURL(blob);
-        });
-      }
-    }else{
-      json=JSON.parse(await file.text());
-    }
-    if(!json.cards || !json.deck || !json.cards.length){alert('无效的JSON格式');return;}
-    const key=json.deck.key || json.deck.name.toLowerCase().replace(/[^a-z0-9]/g,'');
-    // 构建卡片数据（使用 Base64），优先使用导入的options，否则自动生成
-    const allNames=json.cards.map(x=>x.name);
-    const cards=json.cards.map(c=>{
-      const imgData=mediaFiles[c.image]||c.image;
-      // 优先使用导入的options，否则自动生成3个选项
-      let options;
-      if(c.options && c.options.length >= 3){
-        options = c.options;
-      }else{
-        const pool=allNames.filter(n=>n!==c.name);
-        const distractors=pool.sort(()=>Math.random()-0.5).slice(0,2);
-        options=[c.name,...distractors].sort(()=>Math.random()-0.5);
-      }
-      return {
-        img:imgData,
-        name:c.name,
-        options:options,
-        details:c.hints||[],
-        voice:c.name
-      };
-    });
-    // 保存元数据
-    DECKS[key]=cards;
-    const existingIdx=DECKS_META.findIndex(m=>m.key===key);
-    if(existingIdx>=0){
-      DECKS_META[existingIdx]={key, name:json.deck.name};
-    }else{
-      DECKS_META.push({key, name:json.deck.name});
-    }
-    localStorage.setItem('yihai_decks',JSON.stringify(DECKS));
-    localStorage.setItem('yihai_decks_meta',JSON.stringify(DECKS_META));
-    renderDeckList();
-    alert('导入成功！已添加牌组「'+json.deck.name+'」，共'+cards.length+'张卡片');
-    currentDeck=key;
-    warmupSpeech();
-    document.querySelectorAll('.deck-card').forEach(c=>c.classList.remove('selected'));
-    const cardEl=document.querySelector('[data-deck="'+key+'"]');
-    if(cardEl)cardEl.classList.add('selected');
-  }catch(err){
-    alert('导入失败：'+err.message);console.error(err);
-  }
-  e.target.value='';
-}
-
 // ── Home nav ───────────────────────────────────────────────────
 function renderDeckList() {
   const grid = document.getElementById('deck-grid');
+  if (!DECKS_META.length) {
+    grid.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">📂</div>
+      <div class="empty-state-title">还没有牌组</div>
+      <div class="empty-state-sub">点右上角 ↑ 导入 .yhspack 文件<br>开始练习</div>
+    </div>`;
+    currentDeck = null;
+    return;
+  }
   grid.innerHTML = DECKS_META.map((m, i) => {
-    const isRandom = m.key === 'random';
-    const stats = isRandom ? { due: '—', new: '—' } : getDeckStats(m.key);
-    const dueVal = isRandom ? '—' : (stats.due > 0 ? stats.due : '0');
-    const newVal = isRandom ? '—' : (stats.new > 0 ? stats.new : '0');
+    const stats = getDeckStats(m.key);
+    const dueVal = stats.due > 0 ? stats.due : '0';
+    const newVal = stats.new > 0 ? stats.new : '0';
     return `<div class="deck-card${i===0?' selected':''}" data-deck="${m.key}" onclick="selectDeck(this)">
       <div class="deck-info"><div class="deck-name">${m.name}</div></div>
       <div class="deck-stats">
@@ -988,6 +981,7 @@ function renderDeckList() {
       </div>
     </div>`;
   }).join('');
+  if (!currentDeck && DECKS_META.length) currentDeck = DECKS_META[0].key;
 }
 
 function selectDeck(el) {
@@ -1023,10 +1017,12 @@ function updateDeckStats() {
 }
 
 function startBrowse() {
+  if (!currentDeck) return;
   warmupSpeech();
   _launch('browse');
 }
 function startQuiz() {
+  if (!currentDeck) return;
   warmupSpeech();
   _launch('quiz');
 }
@@ -1162,11 +1158,12 @@ function render() {
 
   const timg = document.getElementById('timg');
   timg.style.animation='none'; void timg.offsetWidth; timg.style.animation='';
-  // Support emoji, image path, and Base64 data URL
-  if (q.img && (q.img.startsWith('data:') || q.img.startsWith('http') || q.img.startsWith('./') || q.img.endsWith('.jpg') || q.img.endsWith('.png') || q.img.endsWith('.gif'))) {
-    timg.innerHTML = `<img src="${q.img}" alt="${q.name}">`;
+  // img 字段：URL（blob/http/data）用 <img>，Emoji 或空值用 textContent
+  const imgSrc = q.img || '';
+  if (imgSrc.length > 4) {
+    timg.innerHTML = `<img src="${imgSrc}" alt="${q.name}" onerror="this.parentNode.textContent='🖼️'">`;
   } else {
-    timg.textContent = q.img;
+    timg.textContent = imgSrc;
   }
 
   // Browse mode: skip options, auto-reveal
@@ -1181,47 +1178,24 @@ function render() {
   const opts = document.getElementById('opts');
   opts.innerHTML = '';
 
-  // 兼容导入的JSON（无correct字段，直接使用options数组）
-  // 根据OPT_COUNT切片
-  let displayOptions = [];
-  if (q.options && q.options.length > 0) {
-    // 导入的JSON：确保答案在选项中，然后按OPT_COUNT切片
-    const correctAns = q.name;
-    const optSet = new Set(q.options);
-    if (!optSet.has(correctAns)) {
-      // 答案不在选项中，替换第一个
-      q.options[0] = correctAns;
-    }
-    // 随机打乱后取前OPT_COUNT个
-    const shuffled = [...q.options].sort(() => Math.random() - 0.5);
-    displayOptions = shuffled.slice(0, OPT_COUNT);
-    displayOptions.forEach((txt, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'opt';
-      btn.dataset.idx = i;
-      btn.innerHTML = `<div class="otxt">${txt}</div>`;
-      btn.ontouchstart = () => {};
-      btn.addEventListener('click', e => onSel(e, i, btn));
-      opts.appendChild(btn);
-    });
-  } else if (typeof q.correct === 'number') {
-    // 原有逻辑：内置牌组有correct字段
-    const allOpts = q.options.map((txt, i) => ({txt, i}));
-    const correct = allOpts[q.correct];
-    const distractors = allOpts.filter(o => o.i !== q.correct);
-    const picked = distractors.sort(() => Math.random() - .5).slice(0, OPT_COUNT - 1);
-    picked.push(correct);
-    picked.sort(() => Math.random() - .5);
-    picked.forEach(({txt, i}) => {
-      const btn = document.createElement('button');
-      btn.className = 'opt';
-      btn.dataset.idx = i;
-      btn.innerHTML = `<div class="otxt">${txt}</div>`;
-      btn.ontouchstart = () => {};
-      btn.addEventListener('click', e => onSel(e, i, btn));
-      opts.appendChild(btn);
-    });
-  }
+  // Pick OPT_COUNT options, always including the correct one
+  const allOpts = q.options.map((txt, i) => ({txt, i}));
+  const correct = allOpts[q.correct];
+  const distractors = allOpts.filter(o => o.i !== q.correct);
+  // shuffle distractors, take (OPT_COUNT-1), then add correct, shuffle again
+  const picked = distractors.sort(() => Math.random() - .5).slice(0, OPT_COUNT - 1);
+  picked.push(correct);
+  picked.sort(() => Math.random() - .5);
+
+  picked.forEach(({txt, i}) => {
+    const btn = document.createElement('button');
+    btn.className = 'opt';
+    btn.dataset.idx = i;
+    btn.innerHTML = `<div class="otxt">${txt}</div>`;
+    btn.ontouchstart = () => {};
+    btn.addEventListener('click', e => onSel(e, i, btn));
+    opts.appendChild(btn);
+  });
 
   document.getElementById('opts-zone').style.display = '';
   document.getElementById('content').classList.remove('revealed');
@@ -1244,7 +1218,7 @@ function render() {
 }
 
 function revealBrowse(q) {
-  const answerName = q.name;
+  const answerName = q.name || q.options[q.correct];
   const hints = READ_HINT && q.details && q.details.length ? q.details : [];
 
   document.getElementById('answer-panel').className = 'answer-panel';
@@ -1297,10 +1271,7 @@ function onSel(e, idx, btn) {
   stopAllPromptTimers();
 
   const q = Qs[qIdx];
-  // 直接比对选项名称与正确答案
-  const selectedOption = q.options[idx];
-  const isCorrect = selectedOption === q.name;
-  if (isCorrect) {
+  if (idx === q.correct) {
     tone('ok');
     setTimeout(spawnConfetti, 100);
     revealAnswer();
@@ -1342,7 +1313,7 @@ function onSubmit() {
 function revealAnswer() {
   revealed=true; stopAllPromptTimers();
   const q=Qs[qIdx], isOk=sel===q.correct;
-  const answerName = q.name;
+  const answerName = q.name || q.options[q.correct];
 
   document.getElementById('opts-zone').style.display='none';
   document.getElementById('content').classList.add('revealed');
@@ -1552,24 +1523,7 @@ function loadSettings() {
     }
   });
 
-  window.addEventListener('load', async () => {
-    // Load custom decks from localStorage
-    try{
-      const savedDecks=localStorage.getItem('yihai_decks');
-      const savedMeta=localStorage.getItem('yihai_decks_meta');
-      if(savedDecks){
-        const parsed=JSON.parse(savedDecks);
-        Object.assign(DECKS,parsed);
-      }
-      if(savedMeta){
-        const parsedMeta=JSON.parse(savedMeta);
-        parsedMeta.forEach(m=>{
-          if(!DECKS_META.find(ex=>ex.key===m.key)){
-            DECKS_META.push(m);
-          }
-        });
-      }
-    }catch(e){console.warn('加载自定义牌组失败',e);}
+  window.addEventListener('load', () => {
     const ht = document.getElementById('hint-toggle');
     if (ht) ht.checked = READ_HINT;
     const ocEl = document.getElementById('opt-count');
@@ -1622,22 +1576,89 @@ function toggleTheme(checkbox){
 }
 (function(){
   const s=localStorage.getItem('theme'),sys=window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDark = s ? (s === 'dark') : sys;
+  const isDark=s?s==='dark':sys;
   if(isDark)document.documentElement.classList.add('dark');
   window.addEventListener('load',()=>{
     const tog=document.getElementById('dark-toggle');if(tog)tog.checked=isDark;
+    restoreDecks();
     renderDeckList();
     updateDeckStats();
     });
 })();
 
-// ── PWA: register Service Worker ──────────────────────────────
-// Skip SW registration in preview/sandbox environments
-if ('serviceWorker' in navigator && !location.hostname.includes('claudeusercontent')) {
-  navigator.serviceWorker.register('./sw.js', {scope: './'})
-    .then(r => console.log('[SW] registered', r.scope))
-    .catch(e => console.warn('[SW] failed', e));
-}
+// ── PWA: inject manifest + register Service Worker ────────────
+(function(){
+  // Manifest
+  const manifest = {
+    name: '忆海拾光',
+    short_name: '忆海拾光',
+    description: '老年认知训练 — 看图识物',
+    start_url: '.',
+    display: 'standalone',
+    orientation: 'portrait',
+    background_color: '#f0f9ff',
+    theme_color: '#0ea5e9',
+    icons: [
+      { src: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0ea5e9"/><text y="320" x="256" text-anchor="middle" font-size="280" font-family="sans-serif">🧠</text></svg>`), sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
+    ]
+  };
+  const mBlob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
+  const mUrl  = URL.createObjectURL(mBlob);
+  const link  = document.createElement('link');
+  link.rel = 'manifest'; link.href = mUrl;
+  document.head.appendChild(link);
+
+  // Apple touch icon (inline SVG → PNG via canvas)
+  try {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0ea5e9"/><text y="320" x="256" text-anchor="middle" font-size="280" font-family="sans-serif">🧠</text></svg>`;
+    const img = new Image();
+    const svgBlob = new Blob([svg], {type:'image/svg+xml'});
+    img.onload = () => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 192;
+      cv.getContext('2d').drawImage(img, 0, 0, 192, 192);
+      const al = document.createElement('link');
+      al.rel = 'apple-touch-icon'; al.href = cv.toDataURL();
+      document.head.appendChild(al);
+    };
+    img.src = URL.createObjectURL(svgBlob);
+  } catch(e){}
+
+  // Service Worker (inline as Blob)
+  if ('serviceWorker' in navigator) {
+    const CACHE = 'yihai-v0.4';
+    const swCode = `
+const CACHE='${CACHE}';
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(['./']))
+    .then(() => self.skipWaiting())
+  );
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+      if (!res || res.status !== 200 || res.type !== 'basic') return res;
+      const clone = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, clone));
+      return res;
+    }))
+  );
+});
+`;
+    const swBlob = new Blob([swCode], {type:'application/javascript'});
+    const swUrl  = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl, {scope: './'})
+      .then(reg => console.log('[SW] registered', reg.scope))
+      .catch(e => console.warn('[SW] failed', e));
+  }
+})();
 </script>
 </body>
 </html>
