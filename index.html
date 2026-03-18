@@ -9,6 +9,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0ea5e9">
 <meta name="description" content="老年认知训练 — 看图识物">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <title>忆海拾光</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -293,6 +295,7 @@ body {
   flex:1; min-height:0;
   padding:0 16px 8px;
   display:flex; flex-direction:column;
+  justify-content:flex-end;
 }
 
 /* Target card — 1:1 square, capped height, always fixed */
@@ -308,13 +311,13 @@ body {
   animation:cardGlow 2.8s ease-in-out infinite;
 }
 @keyframes cardGlow {
-  0%,100% { box-shadow: var(--sh), 0 0 0 0 rgba(14,165,233,0); }
-  50%      { box-shadow: var(--sh), 0 0 0 8px rgba(14,165,233,0.22); }
+  0%,100% { box-shadow: var(--sh), 0 0 0 0 rgba(251,146,60,0); }
+  50%      { box-shadow: var(--sh), 0 0 0 10px rgba(251,146,60,0.55); }
 }
 html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 @keyframes cardGlowDark {
-  0%,100% { box-shadow: 0 0 0 0 rgba(56,189,248,0); }
-  50%      { box-shadow: 0 0 0 10px rgba(56,189,248,0.32); }
+  0%,100% { box-shadow: 0 0 0 0 rgba(251,146,60,0); }
+  50%      { box-shadow: 0 0 0 12px rgba(251,146,60,0.65); }
 }
 .target-card > .target-img { border-radius:var(--r); overflow:hidden; }
 /* Stop breathing glow when answer is revealed */
@@ -350,24 +353,24 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
 .opts-zone {
   width:100%; flex-shrink:0;
   display:flex; flex-direction:column;
-  background:var(--surf2); border-radius:var(--r);
-  border:1px solid var(--bd); padding:8px;
+  background:var(--surf); border-radius:var(--r);
+  border:1px solid var(--bd); padding:10px;
   height:var(--opts-zone-h, auto);
 }
 .opts {
   flex:1;
-  display:flex; flex-direction:column; gap:8px;
+  display:flex; flex-direction:column; gap:10px;
 }
 .opt {
   flex:1; height:var(--opt-btn-h, auto);
-  background:var(--surf); border:2px solid var(--bd2);
+  background:#fff; border:2.5px solid var(--ocean);
   border-radius:var(--rsm); cursor:pointer; outline:none;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation;
   position:relative; overflow:hidden;
   display:flex; align-items:center; justify-content:center;
   transition:border-color .18s, background .18s, transform .1s, opacity .2s;
 }
-.opt:active{transform:scale(.98)}
+.opt:active{ transform:scale(.97); background:var(--blue-bg); }
 .otxt {
   font-size:var(--fs-opt, 26px); font-weight:700; letter-spacing:var(--ls-opt, .06em);
   color:var(--text); text-align:center; line-height:1.3;
@@ -582,7 +585,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v1.6</span>
+        <span class="home-version">v1.9</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -715,9 +718,14 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
         <div class="sheet-section">
           <div class="sheet-section-lbl">节奏</div>
           <div class="sheet-row">
-            <span class="sheet-row-lbl">下一题倒计时</span>
-            <input type="range" min="3" max="15" value="6" step="1" id="dbg-ndur" oninput="onNdurChange(this.value)">
+            <span class="sheet-row-lbl">练习倒计时</span>
+            <input type="range" min="0" max="15" value="6" step="1" id="dbg-ndur" oninput="onNdurChange(this.value)">
             <span class="sheet-row-val" id="dbg-ndur-val">6s</span>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">浏览倒计时</span>
+            <input type="range" min="0" max="15" value="4" step="1" id="dbg-bdur" oninput="onBdurChange(this.value)">
+            <span class="sheet-row-val" id="dbg-bdur-val">4s</span>
           </div>
         </div>
       </div>
@@ -1064,12 +1072,14 @@ let currentMode = 'quiz';
 let Qs = [];
 let qIdx = 0, sel = null, revealed = false, wrongCount = 0;
 let nRaf = null, nStart = null;
-let NDUR = 6000;  // 下一题倒计时（毫秒）
+let NDUR = 6000;  // 练习模式倒计时（毫秒），0=手动
+let BDUR = 4000;  // 浏览模式倒计时（毫秒），0=手动
 let THRESH = 5000, SPEAK_DELAY = 1200;
 let READ_HINT = true;
-let OPT_COUNT = 3;  // 显示选项数量（2-4）
+let OPT_COUNT = 3;
 let PHRASE_SELECT = '请选择答案';
 let PHRASE_WRONG  = '不要着急，再试一次';
+let currentAudio = null;  // 当前播放的 Audio 对象，onNext 时停止
 
 // ── Home nav ───────────────────────────────────────────────────
 function renderDeckList() {
@@ -1278,12 +1288,12 @@ function speak(text, delay = 0, onend = null) {
 // 播放答案语音：优先录音，无录音降级 TTS
 function playAnswer(q, onend) {
   if (q.audioUrl) {
-    // 短延迟让 speechSynthesis.cancel() 的引擎恢复期过去
     setTimeout(() => {
       const audio = new Audio(q.audioUrl);
-      if (onend) audio.onended = onend;
-      audio.onerror = () => { speakDirect(q.name, onend); };
-      audio.play().catch(() => { speakDirect(q.name, onend); });
+      currentAudio = audio;
+      if (onend) audio.onended = () => { currentAudio = null; onend(); };
+      audio.onerror = () => { currentAudio = null; speakDirect(q.name, onend); };
+      audio.play().catch(() => { currentAudio = null; speakDirect(q.name, onend); });
     }, 80);
   } else {
     speakDirect(q.name, onend);
@@ -1510,7 +1520,9 @@ function revealAnswer() {
 // ── Next ───────────────────────────────────────────────────────
 function onNext() {
   stopNRing(); stopAllPromptTimers();
-  speechSynthesis.cancel();   // interrupt any playing speech
+  speechSynthesis.cancel();
+  // 停止当前录音播放，保证倒计时和手动点击行为完全一致
+  if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
   tone('next');
   qIdx=(qIdx+1)%Qs.length;
   const ct=document.getElementById('content');
@@ -1524,6 +1536,8 @@ function onNext() {
 
 // ── Next ring ──────────────────────────────────────────────────
 function startNRing() {
+  const dur = currentMode === 'browse' ? BDUR : NDUR;
+  if (dur === 0) return;  // 0 = 手动模式，不启动倒计时
   requestAnimationFrame(() => {
     const btn=document.getElementById('nxtbtn'),svg=document.getElementById('nrsvg');
     const nrt=document.getElementById('nrt'),nrp=document.getElementById('nrp'),sec=document.getElementById('nrsec');
@@ -1537,9 +1551,9 @@ function startNRing() {
     nrp.style.strokeDasharray=perim;nrp.style.strokeDashoffset=perim;
     nStart=performance.now();
     function tick(now){
-      const el=now-nStart,p=Math.min(el/NDUR,1);
+      const el=now-nStart,p=Math.min(el/dur,1);
       nrp.style.strokeDashoffset=perim*(1-p);
-      const rem=Math.ceil((NDUR-el)/1000);
+      const rem=Math.ceil((dur-el)/1000);
       sec.textContent=rem>0?rem:'';
       if(p<1){nRaf=requestAnimationFrame(tick);}
       else{sec.textContent='';onNext();}
@@ -1626,8 +1640,13 @@ function onOptCount(v) {
 
 function onNdurChange(v) {
   NDUR = parseFloat(v) * 1000;
-  document.getElementById('dbg-ndur-val').textContent = `${v}s`;
+  document.getElementById('dbg-ndur-val').textContent = v === '0' ? '手动' : `${v}s`;
   localStorage.setItem('ndur', v);
+}
+function onBdurChange(v) {
+  BDUR = parseFloat(v) * 1000;
+  document.getElementById('dbg-bdur-val').textContent = v === '0' ? '手动' : `${v}s`;
+  localStorage.setItem('bdur', v);
 }
 
 function onThreshChange(v) {
@@ -1659,6 +1678,8 @@ function loadSettings() {
   if (delay) { SPEAK_DELAY = parseFloat(delay) * 1000; }
   const ndur = localStorage.getItem('ndur');
   if (ndur) { NDUR = parseFloat(ndur) * 1000; }
+  const bdur = localStorage.getItem('bdur');
+  if (bdur) { BDUR = parseFloat(bdur) * 1000; }
 
   // Restore CSS variable settings
   const cssVars = [
@@ -1691,7 +1712,10 @@ function loadSettings() {
     if (dlEl && delay) { dlEl.value = delay; dlVal.textContent = `${parseFloat(delay).toFixed(1)}s`; }
     const ndurEl = document.getElementById('dbg-ndur');
     const ndurVal = document.getElementById('dbg-ndur-val');
-    if (ndurEl && ndur) { ndurEl.value = ndur; ndurVal.textContent = `${ndur}s`; }
+    if (ndurEl && ndur) { ndurEl.value = ndur; ndurVal.textContent = ndur === '0' ? '手动' : `${ndur}s`; }
+    const bdurEl = document.getElementById('dbg-bdur');
+    const bdurVal = document.getElementById('dbg-bdur-val');
+    if (bdurEl && bdur) { bdurEl.value = bdur; bdurVal.textContent = bdur === '0' ? '手动' : `${bdur}s`; }
     // sync CSS var sliders
     [
       {id:'fs-opt',suf:'',def:'26'},{id:'fs-ans',suf:'',def:'48'},
@@ -1737,79 +1761,13 @@ function toggleTheme(checkbox){
     });
 })();
 
-// ── PWA: inject manifest + register Service Worker ────────────
-(function(){
-  // Manifest
-  const manifest = {
-    name: '忆海拾光',
-    short_name: '忆海拾光',
-    description: '老年认知训练 — 看图识物',
-    start_url: '.',
-    display: 'standalone',
-    orientation: 'portrait',
-    background_color: '#f0f9ff',
-    theme_color: '#0ea5e9',
-    icons: [
-      { src: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0ea5e9"/><text y="320" x="256" text-anchor="middle" font-size="280" font-family="sans-serif">🧠</text></svg>`), sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
-    ]
-  };
-  const mBlob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
-  const mUrl  = URL.createObjectURL(mBlob);
-  const link  = document.createElement('link');
-  link.rel = 'manifest'; link.href = mUrl;
-  document.head.appendChild(link);
+// ── PWA: register Service Worker ─────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js')
+    .then(reg => console.log('[SW] registered', reg.scope))
+    .catch(e => console.warn('[SW] failed', e));
+}
 
-  // Apple touch icon (inline SVG → PNG via canvas)
-  try {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0ea5e9"/><text y="320" x="256" text-anchor="middle" font-size="280" font-family="sans-serif">🧠</text></svg>`;
-    const img = new Image();
-    const svgBlob = new Blob([svg], {type:'image/svg+xml'});
-    img.onload = () => {
-      const cv = document.createElement('canvas'); cv.width = cv.height = 192;
-      cv.getContext('2d').drawImage(img, 0, 0, 192, 192);
-      const al = document.createElement('link');
-      al.rel = 'apple-touch-icon'; al.href = cv.toDataURL();
-      document.head.appendChild(al);
-    };
-    img.src = URL.createObjectURL(svgBlob);
-  } catch(e){}
-
-  // Service Worker (inline as Blob)
-  if ('serviceWorker' in navigator) {
-    const CACHE = 'yihai-v1.6';
-    const swCode = `
-const CACHE='${CACHE}';
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(['./']))
-    .then(() => self.skipWaiting())
-  );
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
-});
-self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-      if (!res || res.status !== 200 || res.type !== 'basic') return res;
-      const clone = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, clone));
-      return res;
-    }))
-  );
-});
-`;
-    const swBlob = new Blob([swCode], {type:'application/javascript'});
-    const swUrl  = URL.createObjectURL(swBlob);
-    navigator.serviceWorker.register(swUrl, {scope: './'})
-      .then(reg => console.log('[SW] registered', reg.scope))
-      .catch(e => console.warn('[SW] failed', e));
-  }
-})();
 </script>
 </body>
 </html>
