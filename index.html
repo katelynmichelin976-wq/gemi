@@ -582,7 +582,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v1.5</span>
+        <span class="home-version">v1.6</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -883,31 +883,79 @@ function getDeck(key) {
 }
 
 // ── localStorage 持久化 ──────────────────────────────────────────
-const LS_INDEX = 'yihai_decks_index';   // 存 [{key,name}] 数组
-const LS_DECK_PREFIX = 'yihai_deck_';   // + key 存卡片数组（不含 blob URL）
+const LS_INDEX = 'yihai_decks_index';
+const LS_DECK_PREFIX = 'yihai_deck_';
 
 function saveDeckIndex() {
-  localStorage.setItem(LS_INDEX, JSON.stringify(DECKS_META));
+  localStorage.setItem(LS_INDEX, JSON.stringify(
+    DECKS_META.filter(m => !m.builtin)  // 内置牌组不存
+  ));
 }
-
-// 卡片存 localStorage 时不存 img（blob URL 跨页面失效），只存 id/name/imgKey
-// imgKey 用于从 IndexedDB 读取图片（当前阶段跳过，img 设为空，重新导入才有图）
 function saveDeckCards(key, cards) {
   const slim = cards.map(c => ({ id: c.id, name: c.name }));
   localStorage.setItem(LS_DECK_PREFIX + key, JSON.stringify(slim));
 }
 
-function restoreDecks() {
+// ── IndexedDB 媒体缓存 ───────────────────────────────────────────
+const IDB_NAME = 'yihai_media', IDB_VER = 1, IDB_STORE = 'blobs';
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function saveMedia(key, blob) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(blob, key);
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+  });
+}
+async function loadMedia(key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+    req.onsuccess = e => res(e.target.result || null);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function deleteMediaForDeck(deckKey) {
+  const db = await openDB();
+  const allKeys = await new Promise((res, rej) => {
+    const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).getAllKeys();
+    req.onsuccess = e => res(e.target.result); req.onerror = e => rej(e.target.error);
+  });
+  const tx = db.transaction(IDB_STORE, 'readwrite');
+  const st = tx.objectStore(IDB_STORE);
+  allKeys.filter(k => k.startsWith(deckKey + '_')).forEach(k => st.delete(k));
+  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = e => rej(e.target.error); });
+}
+
+async function restoreDecks() {
   try {
     const idx = JSON.parse(localStorage.getItem(LS_INDEX) || '[]');
     DECKS_META = idx;
-    idx.forEach(({ key }) => {
+    for (const { key } of idx) {
       const raw = JSON.parse(localStorage.getItem(LS_DECK_PREFIX + key) || '[]');
-      // img 恢复为空占位（blob URL 已失效），需重新导入才有图片
-      DECKS[key] = raw.map(c => ({ ...c, img: '', audioUrl: '', details: [] }));
-    });
+      const cards = [];
+      for (const c of raw) {
+        const card = { ...c, img: '', audioUrl: '', details: [] };
+        // 从 IndexedDB 恢复图片
+        const imgBlob = await loadMedia(`${key}_${c.id}_img`).catch(() => null);
+        if (imgBlob) card.img = URL.createObjectURL(imgBlob);
+        // 从 IndexedDB 恢复录音
+        const audBlob = await loadMedia(`${key}_${c.id}_aud`).catch(() => null);
+        if (audBlob) card.audioUrl = URL.createObjectURL(audBlob);
+        cards.push(card);
+      }
+      DECKS[key] = cards;
+    }
   } catch(e) { console.warn('restoreDecks failed', e); }
-  // 始终注入内置测试牌组（排在最后，不存入 localStorage）
+  // 始终注入内置测试牌组
   DECKS[BUILTIN_KEY] = BUILTIN_DECK;
   if (!DECKS_META.find(m => m.key === BUILTIN_KEY)) {
     DECKS_META.push({ key: BUILTIN_KEY, name: '🧪 测试牌组', builtin: true });
@@ -951,6 +999,7 @@ async function importYhspack(file) {
           const buf = await imgFile.async('arraybuffer');
           const blob = new Blob([buf], { type: 'image/jpeg' });
           card.img = URL.createObjectURL(blob);
+          await saveMedia(`${key}_${card.id}_img`, blob).catch(() => {});
         }
       }
 
@@ -964,6 +1013,7 @@ async function importYhspack(file) {
                         'ogg':'audio/ogg','webm':'audio/webm','aac':'audio/aac'}[ext] || 'audio/mp4';
           const blob = new Blob([buf], { type: mime });
           card.audioUrl = URL.createObjectURL(blob);
+          await saveMedia(`${key}_${card.id}_aud`, blob).catch(() => {});
         }
       }
 
@@ -1063,16 +1113,15 @@ function selectDeck(el) {
 }
 
 function deleteDeck(e, key) {
-  e.stopPropagation(); // 不触发 selectDeck
+  e.stopPropagation();
   const meta = DECKS_META.find(m => m.key === key);
   if (!meta || meta.builtin) return;
   if (!confirm(`删除牌组「${meta.name}」？`)) return;
-  // 从内存和 localStorage 清除
   delete DECKS[key];
   DECKS_META = DECKS_META.filter(m => m.key !== key);
   localStorage.removeItem(LS_DECK_PREFIX + key);
   saveDeckIndex();
-  // 如果删的是当前选中牌组，重置选中
+  deleteMediaForDeck(key).catch(() => {});  // 清除 IndexedDB 媒体
   if (currentDeck === key) currentDeck = null;
   renderDeckList();
   updateDeckStats();
@@ -1680,9 +1729,9 @@ function toggleTheme(checkbox){
   const s=localStorage.getItem('theme'),sys=window.matchMedia('(prefers-color-scheme: dark)').matches;
   const isDark=s?s==='dark':sys;
   if(isDark)document.documentElement.classList.add('dark');
-  window.addEventListener('load',()=>{
+  window.addEventListener('load', async () => {
     const tog=document.getElementById('dark-toggle');if(tog)tog.checked=isDark;
-    restoreDecks();
+    await restoreDecks();
     renderDeckList();
     updateDeckStats();
     });
@@ -1727,7 +1776,7 @@ function toggleTheme(checkbox){
 
   // Service Worker (inline as Blob)
   if ('serviceWorker' in navigator) {
-    const CACHE = 'yihai-v1.5';
+    const CACHE = 'yihai-v1.6';
     const swCode = `
 const CACHE='${CACHE}';
 self.addEventListener('install', e => {
