@@ -1,17 +1,10 @@
-// 忆海拾光 Service Worker v0.5
-const CACHE = 'yihai-v0.5';
-const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
-];
+const CACHE = 'yihai-v1.9';
+const ASSETS = ['./'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
-      .then(c => c.addAll(ASSETS.map(url => new Request(url, {cache: 'reload'}))))
+      .then(c => c.addAll(ASSETS))
       .then(() => self.skipWaiting())
   );
 });
@@ -27,17 +20,14 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Only handle GET requests for same-origin resources
+  // 只缓存 GET 请求，跳过 IndexedDB / blob 等
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(res => {
-        if (!res || res.status !== 200 || res.type !== 'basic') return res;
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      });
-    })
+    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+      if (!res || res.status !== 200 || res.type !== 'basic') return res;
+      const clone = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, clone));
+      return res;
+    }))
   );
 });
