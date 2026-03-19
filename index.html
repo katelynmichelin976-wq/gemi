@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="忆海拾光">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0ea5e9">
-<meta name="description" content="认知训练 — 看图识物">
+<meta name="description" content="老年认知训练 — 看图识物">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <title>忆海拾光</title>
@@ -581,7 +581,7 @@ body {
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v2.4</span>
+        <span class="home-version">v2.5</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -766,8 +766,8 @@ body {
             <span class="sheet-row-val" id="dbg-ohdelay-val">5s</span>
           </div>
           <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
-            <span class="sheet-row-lbl">选项提示文案（{A}{B}{C}替换为选项）</span>
-            <input type="text" id="phrase-opt-hint" class="phrase-input" value="请在{A}{B}{C}中选择一个" oninput="onPhraseChange('optHint',this.value)">
+            <span class="sheet-row-lbl">选项提示文案（{A}{B}{C}替换为选项，. 为停顿400ms）</span>
+            <input type="text" id="phrase-opt-hint" class="phrase-input" value="请在{A}.{B}.{C}中选择一个" oninput="onPhraseChange('optHint',this.value)">
           </div>
         </div>
 
@@ -1121,7 +1121,7 @@ let PHRASE_SELECT    = '请选择答案'; // 答题提示文案
 // 选项提示
 let OPT_HINT_ON      = true;    // 选项提示开关
 let OPT_HINT_DELAY   = 5000;    // 选项提示延迟（毫秒）
-let PHRASE_OPT_HINT  = '请在{A}{B}{C}中选择一个'; // 选项提示文案
+let PHRASE_OPT_HINT  = '请在{A}.{B}.{C}中选择一个'; // 选项提示文案，. 为停顿符（一个.=400ms）
 
 // 答错提示
 let WRONG_HINT_ON    = true;    // 答错提示开关
@@ -1394,17 +1394,45 @@ function speakSequence(items, onDone, pause = 350) {
 }
 
 // 选项提示：把文案中的{A}{B}{C}{D}替换为实际选项后依次播报
+// 选项提示：解析文案中的 {A}{B}{C} 和停顿符 .（一个.=400ms）
+// 示例文案：请在{A}.{B}.{C}中选择一个
 function speakOptHint(opts) {
   if (!opts || !opts.length) return;
   const labels = ['A','B','C','D'];
-  // 把文案按通配符拆开成片段依次播报，每个选项间有停顿
+  const PAUSE_MS = 400; // 每个 . 的停顿时长
+
+  // 第一步：把通配符替换为实际选项文字
   let text = PHRASE_OPT_HINT;
   opts.forEach((opt, i) => {
     if (i < labels.length) text = text.replace(`{${labels[i]}}`, opt);
   });
-  // 移除未被替换的多余通配符（如只有2个选项时{C}{D}）
+  // 移除未被替换的多余通配符
   text = text.replace(/\{[A-D]\}/g, '');
-  speakDirect(text, null);
+
+  // 第二步：按停顿符 . 拆分成片段
+  const parts = [];
+  const re = /([^.]+)|(\.+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m[1]) {
+      const t = m[1].trim();
+      if (t) parts.push({ type: 'text', val: t });
+    } else if (m[2]) {
+      parts.push({ type: 'pause', ms: m[2].length * PAUSE_MS });
+    }
+  }
+
+  // 第三步：顺序播报，pause 片段用 setTimeout 插入停顿
+  function playParts(arr) {
+    if (!arr.length) return;
+    const [head, ...tail] = arr;
+    if (head.type === 'pause') {
+      setTimeout(() => playParts(tail), head.ms);
+    } else {
+      speakDirect(head.val, () => playParts(tail));
+    }
+  }
+  playParts(parts);
 }
 
 // ── Render ─────────────────────────────────────────────────────
@@ -1733,9 +1761,11 @@ function toggleWrongHint(cb) {
 }
 
 function onPhraseChange(key, val) {
-  if (key === 'select')  { PHRASE_SELECT   = val || '请选择答案';           localStorage.setItem('phraseSelect',  PHRASE_SELECT); }
-  if (key === 'wrong')   { PHRASE_WRONG    = val || '不要着急，再试一次';    localStorage.setItem('phraseWrong',   PHRASE_WRONG); }
-  if (key === 'optHint') { PHRASE_OPT_HINT = val || '请在{A}{B}{C}中选择一个'; localStorage.setItem('phraseOptHint', PHRASE_OPT_HINT); }
+  // 中英文句号统一转为英文 . 存储（停顿符）
+  const normalize = s => s.replace(/。/g, '.');
+  if (key === 'select')  { PHRASE_SELECT   = normalize(val) || '请选择答案';              localStorage.setItem('phraseSelect',  PHRASE_SELECT); }
+  if (key === 'wrong')   { PHRASE_WRONG    = normalize(val) || '不要着急，再试一次';       localStorage.setItem('phraseWrong',   PHRASE_WRONG); }
+  if (key === 'optHint') { PHRASE_OPT_HINT = normalize(val) || '请在{A}.{B}.{C}中选择一个'; localStorage.setItem('phraseOptHint', PHRASE_OPT_HINT); }
 }
 
 function onQpDelayChange(v) {
