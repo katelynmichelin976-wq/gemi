@@ -581,7 +581,7 @@ body {
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v2.3</span>
+        <span class="home-version">v2.4</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -728,8 +728,67 @@ body {
 
       <!-- Tab 1: 语音 -->
       <div class="sheet-panel" id="tab-1">
+
         <div class="sheet-section">
-          <div class="sheet-section-lbl">播报</div>
+          <div class="sheet-section-lbl">答题提示</div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">答题提示</span>
+            <label class="stoggle">
+              <input type="checkbox" id="quiz-prompt-toggle" checked onchange="toggleQuizPrompt(this)">
+              <div class="stoggle-track"></div>
+              <div class="stoggle-thumb"></div>
+            </label>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">答题提示延迟</span>
+            <input type="range" min="0.5" max="10" value="2" step="0.5" id="dbg-qpdelay" oninput="onQpDelayChange(this.value)">
+            <span class="sheet-row-val" id="dbg-qpdelay-val">2s</span>
+          </div>
+          <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <span class="sheet-row-lbl">答题提示文案</span>
+            <input type="text" id="phrase-select" class="phrase-input" value="请选择答案" oninput="onPhraseChange('select',this.value)">
+          </div>
+        </div>
+
+        <div class="sheet-section">
+          <div class="sheet-section-lbl">选项提示</div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">选项提示</span>
+            <label class="stoggle">
+              <input type="checkbox" id="opt-hint-toggle" checked onchange="toggleOptHint(this)">
+              <div class="stoggle-track"></div>
+              <div class="stoggle-thumb"></div>
+            </label>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">选项提示延迟</span>
+            <input type="range" min="0.5" max="10" value="5" step="0.5" id="dbg-ohdelay" oninput="onOhDelayChange(this.value)">
+            <span class="sheet-row-val" id="dbg-ohdelay-val">5s</span>
+          </div>
+          <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <span class="sheet-row-lbl">选项提示文案（{A}{B}{C}替换为选项）</span>
+            <input type="text" id="phrase-opt-hint" class="phrase-input" value="请在{A}{B}{C}中选择一个" oninput="onPhraseChange('optHint',this.value)">
+          </div>
+        </div>
+
+        <div class="sheet-section">
+          <div class="sheet-section-lbl">答错提示</div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">答错提示</span>
+            <label class="stoggle">
+              <input type="checkbox" id="wrong-hint-toggle" checked onchange="toggleWrongHint(this)">
+              <div class="stoggle-track"></div>
+              <div class="stoggle-thumb"></div>
+            </label>
+          </div>
+          <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <span class="sheet-row-lbl">答错提示文案</span>
+            <input type="text" id="phrase-wrong" class="phrase-input" value="不要着急，再试一次" oninput="onPhraseChange('wrong',this.value)">
+          </div>
+        </div>
+
+        <div class="sheet-section">
+          <div class="sheet-section-lbl">答案播报</div>
           <div class="sheet-row">
             <span class="sheet-row-lbl">朗读物品提示</span>
             <label class="stoggle">
@@ -739,30 +798,12 @@ body {
             </label>
           </div>
           <div class="sheet-row">
-            <span class="sheet-row-lbl">播报延迟</span>
+            <span class="sheet-row-lbl">答案播报延迟</span>
             <input type="range" min="0.5" max="3" value="1.2" step="0.1" id="dbg-delay" oninput="onDelayChange(this.value)">
             <span class="sheet-row-val" id="dbg-delay-val">1.2s</span>
           </div>
         </div>
-        <div class="sheet-section">
-          <div class="sheet-section-lbl">选题提示音</div>
-          <div class="sheet-row">
-            <span class="sheet-row-lbl">提示间隔</span>
-            <input type="range" min="2" max="15" value="5" step="1" id="dbg-thresh" oninput="onThreshChange(this.value)">
-            <span class="sheet-row-val" id="dbg-thresh-val">5s</span>
-          </div>
-        </div>
-        <div class="sheet-section">
-          <div class="sheet-section-lbl">提示用语</div>
-          <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
-            <span class="sheet-row-lbl">选题提示</span>
-            <input type="text" id="phrase-select" class="phrase-input" value="请选择答案" oninput="onPhraseChange('select',this.value)">
-          </div>
-          <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
-            <span class="sheet-row-lbl">答错提示</span>
-            <input type="text" id="phrase-wrong" class="phrase-input" value="不要着急，再试一次" oninput="onPhraseChange('wrong',this.value)">
-          </div>
-        </div>
+
       </div>
 
       <!-- Tab 2: 文字 -->
@@ -834,26 +875,26 @@ const FALLBACK_WORDS = ['苹果','香蕉','椅子','水壶','钥匙','手机','�
 // 内置测试牌组（Emoji 图片，无需导入，始终存在）
 const BUILTIN_KEY = '__builtin_test__';
 const BUILTIN_DECK = [
-  { id:'b01', name:'苹果',   img:'🍎', audioUrl:'', details:[] },
-  { id:'b02', name:'香蕉',   img:'🍌', audioUrl:'', details:[] },
-  { id:'b03', name:'椅子',   img:'🪑', audioUrl:'', details:[] },
-  { id:'b04', name:'水壶',   img:'🫖', audioUrl:'', details:[] },
-  { id:'b05', name:'钥匙',   img:'🔑', audioUrl:'', details:[] },
-  { id:'b06', name:'手机',   img:'📱', audioUrl:'', details:[] },
-  { id:'b07', name:'眼镜',   img:'👓', audioUrl:'', details:[] },
-  { id:'b08', name:'雨伞',   img:'☂️', audioUrl:'', details:[] },
-  { id:'b09', name:'毛巾',   img:'🧣', audioUrl:'', details:[] },
-  { id:'b10', name:'牙刷',   img:'🪥', audioUrl:'', details:[] },
-  { id:'b11', name:'西瓜',   img:'🍉', audioUrl:'', details:[] },
-  { id:'b12', name:'胡萝卜', img:'🥕', audioUrl:'', details:[] },
-  { id:'b13', name:'土豆',   img:'🥔', audioUrl:'', details:[] },
-  { id:'b14', name:'玉米',   img:'🌽', audioUrl:'', details:[] },
-  { id:'b15', name:'火车',   img:'🚂', audioUrl:'', details:[] },
-  { id:'b16', name:'汽车',   img:'🚗', audioUrl:'', details:[] },
-  { id:'b17', name:'飞机',   img:'✈️', audioUrl:'', details:[] },
-  { id:'b18', name:'冰箱',   img:'🧊', audioUrl:'', details:[] },
-  { id:'b19', name:'电视',   img:'📺', audioUrl:'', details:[] },
-  { id:'b20', name:'桌子',   img:'🍽️', audioUrl:'', details:[] },
+  { id:'b01', name:'苹果',   img:'🍎', audioUrl:'', details:['红红的，圆圆的，很甜', '水果，可以直接吃'] },
+  { id:'b02', name:'香蕉',   img:'🍌', audioUrl:'', details:['黄色弯弯的', '剥皮吃，软软的很甜'] },
+  { id:'b03', name:'椅子',   img:'🪑', audioUrl:'', details:['有靠背，用来坐的', '吃饭的时候要坐椅子'] },
+  { id:'b04', name:'水壶',   img:'🫖', audioUrl:'', details:['用来烧水的', '热水壶，水开了再喝'] },
+  { id:'b05', name:'钥匙',   img:'🔑', audioUrl:'', details:['用来开门的', '出门一定要带好钥匙'] },
+  { id:'b06', name:'手机',   img:'📱', audioUrl:'', details:['可以打电话，也可以看视频', '充电才能用'] },
+  { id:'b07', name:'眼镜',   img:'👓', audioUrl:'', details:['戴上可以看清楚', '近视的人需要戴'] },
+  { id:'b08', name:'雨伞',   img:'☂️', audioUrl:'', details:['下雨天撑伞，能挡雨', '出门看天气'] },
+  { id:'b09', name:'毛巾',   img:'🧣', audioUrl:'', details:['用来擦脸擦手的', '洗完脸用它擦干'] },
+  { id:'b10', name:'牙刷',   img:'🪥', audioUrl:'', details:['用来刷牙的', '每天早晚都要用'] },
+  { id:'b11', name:'西瓜',   img:'🍉', audioUrl:'', details:['绿色大大的，红色的瓤', '夏天吃很解渴'] },
+  { id:'b12', name:'胡萝卜', img:'🥕', audioUrl:'', details:['橙色长长的，营养很好', '可以生吃也可以炒着吃'] },
+  { id:'b13', name:'土豆',   img:'🥔', audioUrl:'', details:['黄褐色圆圆的', '炒着吃，也能做土豆泥'] },
+  { id:'b14', name:'玉米',   img:'🌽', audioUrl:'', details:['黄色长长的，一粒一粒的', '可以煮着吃'] },
+  { id:'b15', name:'火车',   img:'🚂', audioUrl:'', details:['在铁轨上跑的', '可以去很远的地方'] },
+  { id:'b16', name:'汽车',   img:'🚗', audioUrl:'', details:['四个轮子，坐车出门', '需要驾照才能开'] },
+  { id:'b17', name:'飞机',   img:'✈️', audioUrl:'', details:['在天上飞的', '去很远的地方要坐飞机'] },
+  { id:'b18', name:'冰箱',   img:'🧊', audioUrl:'', details:['放食物保鲜的', '冷冷的，食物放进去不容易坏'] },
+  { id:'b19', name:'电视',   img:'📺', audioUrl:'', details:['看节目用的', '新闻电视剧都能看'] },
+  { id:'b20', name:'桌子',   img:'🍽️', audioUrl:'', details:['吃饭放东西用的', '有四条腿，饭菜放桌上'] },
 ];
 
 // 运行时生成 options + correct（始终生成4个选项供 OPT_COUNT 取用）
@@ -1068,14 +1109,33 @@ let currentMode = 'quiz';
 let Qs = [];
 let qIdx = 0, sel = null, revealed = false, wrongCount = 0;
 let nRaf = null, nStart = null;
-let NDUR = 6000;  // 练习模式倒计时（毫秒），0=手动
-let BDUR = 4000;  // 浏览模式倒计时（毫秒），0=手动
-let THRESH = 5000, SPEAK_DELAY = 1200;
-let READ_HINT = true;
+let NDUR = 6000;       // 练习模式倒计时（毫秒），0=手动
+let BDUR = 4000;       // 浏览模式倒计时（毫秒），0=手动
+let SPEAK_DELAY = 1200; // 答案播报延迟（毫秒）
+
+// 答题提示
+let QUIZ_PROMPT_ON   = true;    // 答题提示开关
+let QUIZ_PROMPT_DELAY = 2000;   // 答题提示延迟（毫秒）
+let PHRASE_SELECT    = '请选择答案'; // 答题提示文案
+
+// 选项提示
+let OPT_HINT_ON      = true;    // 选项提示开关
+let OPT_HINT_DELAY   = 5000;    // 选项提示延迟（毫秒）
+let PHRASE_OPT_HINT  = '请在{A}{B}{C}中选择一个'; // 选项提示文案
+
+// 答错提示
+let WRONG_HINT_ON    = true;    // 答错提示开关
+let PHRASE_WRONG     = '不要着急，再试一次'; // 答错提示文案
+
+// 朗读物品提示
+let READ_HINT        = true;    // 朗读物品提示开关（浏览/练习均受控）
+
 let OPT_COUNT = 3;
-let PHRASE_SELECT = '请选择答案';
-let PHRASE_WRONG  = '不要着急，再试一次';
 let currentAudio = null;  // 当前播放的 Audio 对象，onNext 时停止
+
+// 进入题目时的语音计时器
+let tQuizPromptTimer = null;
+let tOptHintTimer    = null;
 
 // ── Home nav ───────────────────────────────────────────────────
 function renderDeckList() {
@@ -1196,13 +1256,31 @@ function showScreen(id) {
 }
 
 // ── Prompt timers ──────────────────────────────────────────────
-let tSelTimer = null;
-function startSelectTimer() {
-  clearSelectTimer();
-  tSelTimer = setTimeout(() => { if (!revealed && sel === null) speak(PHRASE_SELECT); }, THRESH);
+function clearPromptTimers() {
+  if (tQuizPromptTimer) { clearTimeout(tQuizPromptTimer); tQuizPromptTimer = null; }
+  if (tOptHintTimer)    { clearTimeout(tOptHintTimer);    tOptHintTimer    = null; }
 }
-function clearSelectTimer() { if (tSelTimer) { clearTimeout(tSelTimer); tSelTimer = null; } }
-function stopAllPromptTimers() { clearSelectTimer(); speechSynthesis.cancel(); }
+function stopAllPromptTimers() {
+  clearPromptTimers();
+  speechSynthesis.cancel();
+}
+
+// 进入题目后启动语音提示序列
+function startCardPrompts(pickedOpts) {
+  clearPromptTimers();
+  // 第一阶段：答题提示
+  tQuizPromptTimer = setTimeout(() => {
+    tQuizPromptTimer = null;
+    if (QUIZ_PROMPT_ON) speak(PHRASE_SELECT);
+    // 第二阶段：选项提示（在答题提示延迟基础上再等OPT_HINT_DELAY）
+    tOptHintTimer = setTimeout(() => {
+      tOptHintTimer = null;
+      if (OPT_HINT_ON && pickedOpts && pickedOpts.length) {
+        speakOptHint(pickedOpts);
+      }
+    }, OPT_HINT_DELAY);
+  }, QUIZ_PROMPT_DELAY);
+}
 
 // ── Audio ──────────────────────────────────────────────────────
 let ac = null;
@@ -1315,6 +1393,20 @@ function speakSequence(items, onDone, pause = 350) {
   });
 }
 
+// 选项提示：把文案中的{A}{B}{C}{D}替换为实际选项后依次播报
+function speakOptHint(opts) {
+  if (!opts || !opts.length) return;
+  const labels = ['A','B','C','D'];
+  // 把文案按通配符拆开成片段依次播报，每个选项间有停顿
+  let text = PHRASE_OPT_HINT;
+  opts.forEach((opt, i) => {
+    if (i < labels.length) text = text.replace(`{${labels[i]}}`, opt);
+  });
+  // 移除未被替换的多余通配符（如只有2个选项时{C}{D}）
+  text = text.replace(/\{[A-D]\}/g, '');
+  speakDirect(text, null);
+}
+
 // ── Render ─────────────────────────────────────────────────────
 function render() {
   const q = Qs[qIdx];
@@ -1368,16 +1460,19 @@ function render() {
   document.getElementById('answer-panel').className = 'answer-panel';
   const _nb=document.getElementById('nxtbtn'); _nb.className='nxtbtn'; document.querySelector('.btm').classList.remove('active'); stopNRing();
 
-  // 选项区固定高度：每个按钮固定高度，不跟图片联动，删除选项后其余按钮高度不变
+  // 选项区固定高度
   requestAnimationFrame(() => {
-    const gap = 8, pad = 16, n = OPT_COUNT;
-    const btnH = 72;  // 固定按钮高度px
+    const gap = 10, pad = 16, n = OPT_COUNT;
+    const btnH = 72;
     const zoneH = btnH * n + gap * (n - 1) + pad;
     document.documentElement.style.setProperty('--opts-zone-h', `${zoneH}px`);
     document.documentElement.style.setProperty('--opt-btn-h', `${btnH}px`);
   });
+
   stopAllPromptTimers();
-  startSelectTimer();
+  // 传入实际显示的选项文字，供选项提示使用
+  const pickedTexts = picked.map(({txt}) => txt);
+  startCardPrompts(pickedTexts);
 }
 
 function revealBrowse(q) {
@@ -1403,15 +1498,17 @@ function revealBrowse(q) {
   nb0.classList.add('show');
   document.querySelector('.btm').classList.add('active');
 
-  // 优先播放录音，无录音用 TTS
-  const startCountdown = () => startNRing();
-  if (hints.length) {
-    playAnswer(q, () => {
-      setTimeout(() => speakSequence(hints, startCountdown), 400);
-    });
-  } else {
-    playAnswer(q, () => { setTimeout(startCountdown, 300); });
-  }
+  // 答案播报延迟后播放
+  setTimeout(() => {
+    const startCountdown = () => startNRing();
+    if (hints.length) {
+      playAnswer(q, () => {
+        setTimeout(() => speakSequence(hints, startCountdown), 400);
+      });
+    } else {
+      playAnswer(q, () => { setTimeout(startCountdown, 300); });
+    }
+  }, SPEAK_DELAY);
 }
 
 // ── Select ─────────────────────────────────────────────────────
@@ -1440,15 +1537,13 @@ function onSel(e, idx, btn) {
     if (wrongCount === 1) {
       btn.style.pointerEvents = 'none';
       sel = null;
-      // fade out and remove the clicked wrong button itself
       requestAnimationFrame(() => {
         btn.style.transition = 'opacity .3s, transform .3s';
         btn.style.opacity = '0';
         btn.style.transform = 'scale(.9)';
         setTimeout(() => btn.remove(), 300);
       });
-      speak(PHRASE_WRONG);
-      setTimeout(() => startSelectTimer(), 350);
+      if (WRONG_HINT_ON) speak(PHRASE_WRONG);
     } else {
       revealAnswer();
     }
@@ -1502,15 +1597,17 @@ function revealAnswer() {
   nb2.classList.add('show');
   document.querySelector('.btm').classList.add('active');
 
-  // 优先播放录音，无录音用 TTS
-  const startCountdown = () => startNRing();
-  if (hints.length) {
-    playAnswer(q, () => {
-      setTimeout(() => speakSequence(hints, startCountdown), 400);
-    });
-  } else {
-    playAnswer(q, () => { setTimeout(startCountdown, 300); });
-  }
+  // 答案播报延迟后播放，优先录音，无录音用 TTS
+  setTimeout(() => {
+    const startCountdown = () => startNRing();
+    if (hints.length) {
+      playAnswer(q, () => {
+        setTimeout(() => speakSequence(hints, startCountdown), 400);
+      });
+    } else {
+      playAnswer(q, () => { setTimeout(startCountdown, 300); });
+    }
+  }, SPEAK_DELAY);
 }
 
 // ── Next ───────────────────────────────────────────────────────
@@ -1622,10 +1719,39 @@ function toggleReadHint(cb) {
   READ_HINT = cb.checked;
   localStorage.setItem('readHint', READ_HINT ? '1' : '0');
 }
+function toggleQuizPrompt(cb) {
+  QUIZ_PROMPT_ON = cb.checked;
+  localStorage.setItem('quizPromptOn', QUIZ_PROMPT_ON ? '1' : '0');
+}
+function toggleOptHint(cb) {
+  OPT_HINT_ON = cb.checked;
+  localStorage.setItem('optHintOn', OPT_HINT_ON ? '1' : '0');
+}
+function toggleWrongHint(cb) {
+  WRONG_HINT_ON = cb.checked;
+  localStorage.setItem('wrongHintOn', WRONG_HINT_ON ? '1' : '0');
+}
 
 function onPhraseChange(key, val) {
-  if (key === 'select') { PHRASE_SELECT = val || '请选择答案'; localStorage.setItem('phraseSelect', PHRASE_SELECT); }
-  if (key === 'wrong')  { PHRASE_WRONG  = val || '不要着急，再试一次'; localStorage.setItem('phraseWrong', PHRASE_WRONG); }
+  if (key === 'select')  { PHRASE_SELECT   = val || '请选择答案';           localStorage.setItem('phraseSelect',  PHRASE_SELECT); }
+  if (key === 'wrong')   { PHRASE_WRONG    = val || '不要着急，再试一次';    localStorage.setItem('phraseWrong',   PHRASE_WRONG); }
+  if (key === 'optHint') { PHRASE_OPT_HINT = val || '请在{A}{B}{C}中选择一个'; localStorage.setItem('phraseOptHint', PHRASE_OPT_HINT); }
+}
+
+function onQpDelayChange(v) {
+  QUIZ_PROMPT_DELAY = parseFloat(v) * 1000;
+  document.getElementById('dbg-qpdelay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
+  localStorage.setItem('quizPromptDelay', v);
+}
+function onOhDelayChange(v) {
+  OPT_HINT_DELAY = parseFloat(v) * 1000;
+  document.getElementById('dbg-ohdelay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
+  localStorage.setItem('optHintDelay', v);
+}
+function onDelayChange(v) {
+  SPEAK_DELAY = parseFloat(v) * 1000;
+  document.getElementById('dbg-delay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
+  localStorage.setItem('delay', v);
 }
 
 function onOptCount(v) {
@@ -1633,7 +1759,6 @@ function onOptCount(v) {
   document.getElementById('opt-count-val').textContent = `${v}个`;
   localStorage.setItem('optCount', v);
 }
-
 function onNdurChange(v) {
   NDUR = parseFloat(v) * 1000;
   document.getElementById('dbg-ndur-val').textContent = v === '0' ? '手动' : `${v}s`;
@@ -1645,39 +1770,46 @@ function onBdurChange(v) {
   localStorage.setItem('bdur', v);
 }
 
-function onThreshChange(v) {
-  THRESH = parseFloat(v) * 1000;
-  document.getElementById('dbg-thresh-val').textContent = `${v}s`;
-  localStorage.setItem('thresh', v);
-  if (tSelTimer)  { clearSelectTimer();  startSelectTimer(); }
-}
-function onDelayChange(v) {
-  SPEAK_DELAY = parseFloat(v) * 1000;
-  document.getElementById('dbg-delay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
-  localStorage.setItem('delay', v);
-}
-
 function loadSettings() {
+  // 朗读物品提示
   const rh = localStorage.getItem('readHint');
   if (rh !== null) READ_HINT = rh === '1';
-  const oc = localStorage.getItem('optCount');
-  if (oc) OPT_COUNT = parseInt(oc);
 
+  // 答题提示
+  const quizPromptOn = localStorage.getItem('quizPromptOn');
+  if (quizPromptOn !== null) QUIZ_PROMPT_ON = quizPromptOn === '1';
+  const qpDelay = localStorage.getItem('quizPromptDelay');
+  if (qpDelay) QUIZ_PROMPT_DELAY = parseFloat(qpDelay) * 1000;
   const ps = localStorage.getItem('phraseSelect');
   if (ps) PHRASE_SELECT = ps;
+
+  // 选项提示
+  const optHintOn = localStorage.getItem('optHintOn');
+  if (optHintOn !== null) OPT_HINT_ON = optHintOn === '1';
+  const ohDelay = localStorage.getItem('optHintDelay');
+  if (ohDelay) OPT_HINT_DELAY = parseFloat(ohDelay) * 1000;
+  const phraseOptHint = localStorage.getItem('phraseOptHint');
+  if (phraseOptHint) PHRASE_OPT_HINT = phraseOptHint;
+
+  // 答错提示
+  const wrongHintOn = localStorage.getItem('wrongHintOn');
+  if (wrongHintOn !== null) WRONG_HINT_ON = wrongHintOn === '1';
   const pw = localStorage.getItem('phraseWrong');
   if (pw) PHRASE_WRONG = pw;
 
-  const thresh = localStorage.getItem('thresh');
-  if (thresh) { THRESH = parseFloat(thresh) * 1000; }
+  // 答案播报延迟
   const delay = localStorage.getItem('delay');
-  if (delay) { SPEAK_DELAY = parseFloat(delay) * 1000; }
-  const ndur = localStorage.getItem('ndur');
-  if (ndur) { NDUR = parseFloat(ndur) * 1000; }
-  const bdur = localStorage.getItem('bdur');
-  if (bdur) { BDUR = parseFloat(bdur) * 1000; }
+  if (delay) SPEAK_DELAY = parseFloat(delay) * 1000;
 
-  // Restore CSS variable settings
+  // 选项数量 / 倒计时
+  const oc = localStorage.getItem('optCount');
+  if (oc) OPT_COUNT = parseInt(oc);
+  const ndur = localStorage.getItem('ndur');
+  if (ndur) NDUR = parseFloat(ndur) * 1000;
+  const bdur = localStorage.getItem('bdur');
+  if (bdur) BDUR = parseFloat(bdur) * 1000;
+
+  // Restore CSS variables
   const cssVars = [
     {k:'fs-opt', def:'26'}, {k:'fs-ans', def:'48'},
     {k:'fs-hint', def:'15'}, {k:'fs-btn', def:'20'},
@@ -1686,33 +1818,45 @@ function loadSettings() {
   ];
   cssVars.forEach(({k, def}) => {
     const v = localStorage.getItem(k) || def;
-    if (k.startsWith('fs-') || k.startsWith('ls-')) {
-      document.documentElement.style.setProperty(`--${k}`, `${v}px`);
-    }
+    document.documentElement.style.setProperty(`--${k}`, `${v}px`);
   });
 
   window.addEventListener('load', () => {
-    const ht = document.getElementById('hint-toggle');
-    if (ht) ht.checked = READ_HINT;
-    const ocEl = document.getElementById('opt-count');
-    if (ocEl) { ocEl.value = OPT_COUNT; document.getElementById('opt-count-val').textContent = `${OPT_COUNT}个`; }
+    // 开关同步
+    const htEl = document.getElementById('hint-toggle');
+    if (htEl) htEl.checked = READ_HINT;
+    const qptEl = document.getElementById('quiz-prompt-toggle');
+    if (qptEl) qptEl.checked = QUIZ_PROMPT_ON;
+    const ohtEl = document.getElementById('opt-hint-toggle');
+    if (ohtEl) ohtEl.checked = OPT_HINT_ON;
+    const whtEl = document.getElementById('wrong-hint-toggle');
+    if (whtEl) whtEl.checked = WRONG_HINT_ON;
+
+    // 文案同步
     const ps2 = document.getElementById('phrase-select');
     if (ps2) ps2.value = PHRASE_SELECT;
     const pw2 = document.getElementById('phrase-wrong');
     if (pw2) pw2.value = PHRASE_WRONG;
-    const thEl = document.getElementById('dbg-thresh');
-    const thVal = document.getElementById('dbg-thresh-val');
-    if (thEl && thresh) { thEl.value = thresh; thVal.textContent = `${thresh}s`; }
+    const pohEl = document.getElementById('phrase-opt-hint');
+    if (pohEl) pohEl.value = PHRASE_OPT_HINT;
+
+    // 选项数量
+    const ocEl = document.getElementById('opt-count');
+    if (ocEl) { ocEl.value = OPT_COUNT; document.getElementById('opt-count-val').textContent = `${OPT_COUNT}个`; }
+
+    // 延迟滑块同步
+    const qpdEl = document.getElementById('dbg-qpdelay');
+    if (qpdEl && qpDelay) { qpdEl.value = qpDelay; document.getElementById('dbg-qpdelay-val').textContent = `${parseFloat(qpDelay).toFixed(1)}s`; }
+    const ohdEl = document.getElementById('dbg-ohdelay');
+    if (ohdEl && ohDelay) { ohdEl.value = ohDelay; document.getElementById('dbg-ohdelay-val').textContent = `${parseFloat(ohDelay).toFixed(1)}s`; }
     const dlEl = document.getElementById('dbg-delay');
-    const dlVal = document.getElementById('dbg-delay-val');
-    if (dlEl && delay) { dlEl.value = delay; dlVal.textContent = `${parseFloat(delay).toFixed(1)}s`; }
+    if (dlEl && delay) { dlEl.value = delay; document.getElementById('dbg-delay-val').textContent = `${parseFloat(delay).toFixed(1)}s`; }
     const ndurEl = document.getElementById('dbg-ndur');
-    const ndurVal = document.getElementById('dbg-ndur-val');
-    if (ndurEl && ndur) { ndurEl.value = ndur; ndurVal.textContent = ndur === '0' ? '手动' : `${ndur}s`; }
+    if (ndurEl && ndur) { ndurEl.value = ndur; document.getElementById('dbg-ndur-val').textContent = ndur === '0' ? '手动' : `${ndur}s`; }
     const bdurEl = document.getElementById('dbg-bdur');
-    const bdurVal = document.getElementById('dbg-bdur-val');
-    if (bdurEl && bdur) { bdurEl.value = bdur; bdurVal.textContent = bdur === '0' ? '手动' : `${bdur}s`; }
-    // sync CSS var sliders
+    if (bdurEl && bdur) { bdurEl.value = bdur; document.getElementById('dbg-bdur-val').textContent = bdur === '0' ? '手动' : `${bdur}s`; }
+
+    // CSS var 滑块同步
     [
       {id:'fs-opt',suf:'',def:'26'},{id:'fs-ans',suf:'',def:'48'},
       {id:'fs-hint',suf:'',def:'15'},{id:'fs-btn',suf:'',def:'20'},
