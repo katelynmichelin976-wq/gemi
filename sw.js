@@ -1,4 +1,4 @@
-const CACHE = 'yihai-v2.0';
+const CACHE = 'yihai-v2.2';
 const ASSETS = ['./'];
 
 self.addEventListener('install', e => {
