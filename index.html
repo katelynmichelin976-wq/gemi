@@ -581,7 +581,7 @@ body {
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v2.5</span>
+        <span class="home-version">v2.6</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -766,7 +766,7 @@ body {
             <span class="sheet-row-val" id="dbg-ohdelay-val">5s</span>
           </div>
           <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
-            <span class="sheet-row-lbl">选项提示文案（{A}{B}{C}替换为选项，. 为停顿400ms）</span>
+            <span class="sheet-row-lbl">选项提示文案（{A}{B}{C}替换为选项，. 为停顿100ms）</span>
             <input type="text" id="phrase-opt-hint" class="phrase-input" value="请在{A}.{B}.{C}中选择一个" oninput="onPhraseChange('optHint',this.value)">
           </div>
         </div>
@@ -1399,7 +1399,7 @@ function speakSequence(items, onDone, pause = 350) {
 function speakOptHint(opts) {
   if (!opts || !opts.length) return;
   const labels = ['A','B','C','D'];
-  const PAUSE_MS = 400; // 每个 . 的停顿时长
+  const PAUSE_MS = 100; // 每个 . 的停顿时长
 
   // 第一步：把通配符替换为实际选项文字
   let text = PHRASE_OPT_HINT;
