@@ -101,7 +101,13 @@ body {
 /* ════════════════════════════════
    HOME SCREEN
    ════════════════════════════════ */
-#screen-home { justify-content: flex-start; overflow: hidden; }
+#screen-home {
+  justify-content: flex-start; overflow: hidden;
+  height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  height: calc(100vh - var(--safe-top) - var(--safe-bottom));
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
 
 .home-scroll {
   flex: 1; width: 100%; max-width: 500px;
@@ -113,7 +119,7 @@ body {
 /* ── Ocean-blue top bar ── */
 .home-topbar {
   width: 100%;
-  padding: calc(10px + var(--safe-top)) 16px 14px;
+  padding: 10px 16px 14px;
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
   background: var(--bg);
@@ -210,7 +216,7 @@ body {
 /* Start footer — browse (secondary) + start (primary) */
 .home-footer {
   width: 100%; max-width: 500px; flex-shrink: 0;
-  padding: 14px 16px calc(12px + var(--safe-bottom));
+  padding: 14px 16px 12px;
   background: var(--bg);
 }
 .footer-btns {
@@ -242,13 +248,20 @@ body {
 /* ════════════════════════════════
    QUIZ SCREEN
    ════════════════════════════════ */
-#screen-quiz { overflow:hidden; }
+#screen-quiz {
+  overflow:hidden;
+  /* 精确高度：减去 safe area，确保 flex 子元素有明确的拉伸基准 */
+  height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  height: calc(100vh - var(--safe-top) - var(--safe-bottom));
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
 
 /* ── Top bar: back + progress ── */
 .bar {
   width:100%; max-width:500px; flex-shrink:0;
   display:flex; align-items:center; gap:12px;
-  padding: calc(10px + var(--safe-top)) 16px 12px;
+  padding: 10px 16px 12px;
 }
 .back-btn {
   background:none; border:none; cursor:pointer; padding:4px;
@@ -445,11 +458,11 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
   display:flex; flex-direction:column;
 }
 .btm:has(.nxtbtn.show) {
-  padding: 8px 16px calc(12px + var(--safe-bottom));
+  padding: 8px 16px 12px;
 }
 /* Fallback for Safari < 15.4 without :has */
 .btm.active {
-  padding: 8px 16px calc(12px + var(--safe-bottom));
+  padding: 8px 16px 12px;
 }
 /* Submit button — hidden (auto-submit replaces it) */
 .subbtn { display:none !important; }
@@ -510,7 +523,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
   width:100%; max-width:500px;
   background:var(--surf); border-radius:24px 24px 0 0;
   border-top:0.5px solid var(--bd);
-  padding-bottom: calc(16px + var(--safe-bottom));
+  padding-bottom: 16px;
   transition:transform .32s cubic-bezier(.32,1,.36,1);
   display:flex; flex-direction:column;
   max-height:82vh;
@@ -592,7 +605,7 @@ html.dark .target-card { animation: cardGlowDark 2.8s ease-in-out infinite; }
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v2.1</span>
+        <span class="home-version">v2.2</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
