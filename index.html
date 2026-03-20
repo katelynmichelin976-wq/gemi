@@ -592,7 +592,7 @@ body {
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v3.6</span>
+        <span class="home-version">v3.9</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -1234,7 +1234,11 @@ function renderDeckList() {
     currentDeck = null;
     return;
   }
-  grid.innerHTML = DECKS_META.map((m, i) => {
+  // 先确定 currentDeck，再生成 HTML，保证 selected 类正确渲染
+  if (!currentDeck || !DECKS_META.find(m => m.key === currentDeck)) {
+    currentDeck = DECKS_META[0].key;
+  }
+  grid.innerHTML = DECKS_META.map((m) => {
     const stats = getDeckStats(m.key);
     const dueVal = stats.due > 0 ? stats.due : '0';
     const newVal = stats.new > 0 ? stats.new : '0';
@@ -1253,9 +1257,6 @@ function renderDeckList() {
       ${delBtn}
     </div>`;
   }).join('');
-  if (!currentDeck && DECKS_META.length) {
-    currentDeck = DECKS_META[0].key;
-  }
 }
 
 function selectDeck(el) {
@@ -1434,10 +1435,15 @@ if (typeof speechSynthesis.onvoiceschanged !== 'undefined') {
 function warmupSpeech() {
   if (speechReady) return;
   speechReady = true;
+  // 解锁 TTS 引擎
   const utt = new SpeechSynthesisUtterance('');
   utt.volume = 0;
   speechSynthesis.speak(utt);
-  // Also try loading voices now (iOS sometimes loads them after user gesture)
+  // 解锁 Audio 播放权限（iOS 需要在用户手势内创建并 play 一次）
+  try {
+    const a = new Audio();
+    a.play().catch(() => {});
+  } catch(e) {}
   setTimeout(() => { loadVoices(); }, 300);
 }
 
@@ -1559,6 +1565,11 @@ function render() {
   const q = Qs[qIdx];
   sel = null; revealed = false; wrongCount = 0;
 
+  // 立即清除上一张的答案状态，防止浏览模式翻页闪现
+  document.getElementById('answer-panel').className = 'answer-panel';
+  document.getElementById('content').classList.remove('revealed');
+  document.querySelectorAll('.detail-item').forEach(el => el.classList.remove('show'));
+
   document.getElementById('pfill').style.width = `${(qIdx / Qs.length) * 100}%`;
 
   const timg = document.getElementById('timg');
@@ -1661,8 +1672,10 @@ function revealBrowse(q) {
     // 语音开始播放的同时，启动文字显示计时
     setTimeout(() => {
       if (sid !== sessionId) return;
+      const ap = document.getElementById('answer-panel');
+      ap.style.transition = '';  // 恢复transition，让show动画正常播放
       document.getElementById('content').classList.add('revealed');
-      document.getElementById('answer-panel').classList.add('show');
+      ap.classList.add('show');
       document.querySelectorAll('.detail-item').forEach((item, i) => {
         setTimeout(() => item.classList.add('show'), 100 + i * 120);
       });
@@ -1755,7 +1768,10 @@ function revealAnswer() {
     detailsEl.appendChild(item);
     setTimeout(()=>item.classList.add('show'), 350+i*120);
   });
-  setTimeout(()=>panel.classList.add('show'),30);
+  setTimeout(()=>{
+    panel.style.transition = '';  // 恢复transition
+    panel.classList.add('show');
+  },30);
 
   if (isOk) { /* tone and confetti now in onSel */ }
 
@@ -1794,6 +1810,11 @@ function onNext() {
   speechSynthesis.cancel();
   if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
   tone('next');
+  // 立即清除答案面板，禁止transition防止淡出期间闪现新内容
+  const _ap = document.getElementById('answer-panel');
+  _ap.style.transition = 'none';
+  _ap.className = 'answer-panel';
+  document.getElementById('content').classList.remove('revealed');
   qIdx=(qIdx+1)%Qs.length;
   const ct=document.getElementById('content');
   ct.classList.add('sout');
@@ -2207,6 +2228,10 @@ function toggleTheme(checkbox){
   window.addEventListener('load', async () => {
     const tog=document.getElementById('dark-toggle');if(tog)tog.checked=isDark;
     await restoreDecks();
+    // 初始选中第一个有卡片的牌组
+    if (!currentDeck && DECKS_META.length) {
+      currentDeck = DECKS_META[0].key;
+    }
     renderDeckList();
     updateDeckStats();
     });
