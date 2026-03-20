@@ -13,7 +13,16 @@
 <link rel="apple-touch-icon" href="./icon-192.png">
 <title>忆海拾光</title>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+  -webkit-touch-callout: none;   /* iOS 长按菜单 */
+  -webkit-user-select: none;     /* 文字选中 */
+  user-select: none;
+}
+/* 设置页输入框恢复文字选中和输入 */
+input[type=text], textarea { -webkit-user-select: text; user-select: text; }
+/* 图片禁止拖拽和长按保存 */
+img { -webkit-user-drag: none; pointer-events: none; }
 
 :root {
   /* Ocean blue theme */
@@ -352,6 +361,7 @@ body {
   background:var(--surf); border-radius:var(--r);
   border:1px solid var(--bd); padding:10px;
   height:var(--opts-zone-h, auto);
+  user-select:none; -webkit-user-select:none;
 }
 .opts {
   flex:1;
@@ -365,6 +375,7 @@ body {
   position:relative; overflow:hidden;
   display:flex; align-items:center; justify-content:center;
   transition:border-color .18s, background .18s, transform .1s, opacity .2s;
+  user-select:none; -webkit-user-select:none;
 }
 .opt:active{ transform:scale(.97); background:var(--blue-bg); }
 .otxt {
@@ -581,7 +592,7 @@ body {
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v2.6</span>
+        <span class="home-version">v3.3</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -710,6 +721,11 @@ body {
             <input type="range" min="2" max="4" value="3" step="1" id="opt-count" oninput="onOptCount(this.value)">
             <span class="sheet-row-val" id="opt-count-val">3个</span>
           </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">防误触延迟</span>
+            <input type="range" min="0" max="400" value="120" step="20" id="opt-touch-delay" oninput="onOptTouchDelayChange(this.value)">
+            <span class="sheet-row-val" id="opt-touch-delay-val">120ms</span>
+          </div>
         </div>
         <div class="sheet-section">
           <div class="sheet-section-lbl">节奏</div>
@@ -801,6 +817,25 @@ body {
             <span class="sheet-row-lbl">答案播报延迟</span>
             <input type="range" min="0.5" max="3" value="1.2" step="0.1" id="dbg-delay" oninput="onDelayChange(this.value)">
             <span class="sheet-row-val" id="dbg-delay-val">1.2s</span>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">语速</span>
+            <input type="range" min="0.5" max="2" value="0.85" step="0.05" id="tts-rate" oninput="onTtsRateChange(this.value)">
+            <span class="sheet-row-val" id="tts-rate-val">0.85</span>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">音调</span>
+            <input type="range" min="0.5" max="2" value="1" step="0.1" id="tts-pitch" oninput="onTtsPitchChange(this.value)">
+            <span class="sheet-row-val" id="tts-pitch-val">1.0</span>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">音色</span>
+            <select id="tts-voice" onchange="onTtsVoiceChange(this.value)"
+              style="flex:1;padding:6px 10px;border:1.5px solid var(--bd2);border-radius:10px;
+                     background:var(--surf2);color:var(--text);font-family:inherit;font-size:14px;
+                     outline:none;max-width:200px;">
+              <option value="">自动（中文优先）</option>
+            </select>
           </div>
         </div>
 
@@ -1130,12 +1165,19 @@ let PHRASE_WRONG     = '不要着急，再试一次'; // 答错提示文案
 // 朗读物品提示
 let READ_HINT        = true;    // 朗读物品提示开关（浏览/练习均受控）
 
+// TTS 音色参数
+let TTS_RATE         = 0.85;    // 语速
+let TTS_PITCH        = 1.0;     // 音调
+let TTS_VOICE_NAME   = '';      // 音色名称，空=自动选中文音色
+
 let OPT_COUNT = 3;
+let OPT_TOUCH_DELAY = 120; // 防误触：手指按住至少多少ms才算有效点击（毫秒）
 let currentAudio = null;  // 当前播放的 Audio 对象，onNext 时停止
 
 // 进入题目时的语音计时器
 let tQuizPromptTimer = null;
 let tOptHintTimer    = null;
+let tAnswerTimer     = null;  // 答案播报延迟 timer
 
 // ── Home nav ───────────────────────────────────────────────────
 function renderDeckList() {
@@ -1228,6 +1270,26 @@ function startQuiz() {
   warmupSpeech();
   _launch('quiz');
 }
+// ── WakeLock 防锁屏 ────────────────────────────────────────────
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+  } catch(e) { /* 不支持或被拒绝，静默处理 */ }
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(()=>{}); wakeLock = null; }
+}
+// 页面重新可见时（从后台切回）重新申请
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && document.getElementById('screen-quiz').classList.contains('active')) {
+    requestWakeLock();
+  } else if (document.visibilityState === 'hidden') {
+    releaseWakeLock();
+  }
+});
+
 function _launch(mode) {
   currentMode = mode;
   Qs = getDeck(currentDeck);
@@ -1235,11 +1297,13 @@ function _launch(mode) {
   qIdx = 0;
   document.getElementById('nxt-lbl').textContent = mode === 'browse' ? '下一张' : '下一题';
   showScreen('screen-quiz');
+  requestWakeLock();
   render();
 }
 function goHome() {
   stopNRing(); stopAllPromptTimers();
   speechSynthesis.cancel();
+  releaseWakeLock();
   renderDeckList();
   updateDeckStats();
   showScreen('screen-home');
@@ -1259,6 +1323,7 @@ function showScreen(id) {
 function clearPromptTimers() {
   if (tQuizPromptTimer) { clearTimeout(tQuizPromptTimer); tQuizPromptTimer = null; }
   if (tOptHintTimer)    { clearTimeout(tOptHintTimer);    tOptHintTimer    = null; }
+  if (tAnswerTimer)     { clearTimeout(tAnswerTimer);     tAnswerTimer     = null; }
 }
 function stopAllPromptTimers() {
   clearPromptTimers();
@@ -1314,7 +1379,7 @@ function loadVoices() {
 }
 loadVoices();
 if (typeof speechSynthesis.onvoiceschanged !== 'undefined') {
-  speechSynthesis.onvoiceschanged = loadVoices;
+  speechSynthesis.onvoiceschanged = () => { loadVoices(); populateVoiceList(); };
 }
 
 // iOS: warm up speech engine on first user gesture
@@ -1330,8 +1395,12 @@ function warmupSpeech() {
 }
 
 function pickVoice() {
-  // Reload voices in case they weren't available at init
   if (!voices.length) loadVoices();
+  // 优先使用用户指定的音色
+  if (TTS_VOICE_NAME) {
+    const named = voices.find(v => v.name === TTS_VOICE_NAME);
+    if (named) return named;
+  }
   return voices.find(v => v.lang === 'zh-CN')
       || voices.find(v => v.lang === 'zh-TW')
       || voices.find(v => v.lang.startsWith('zh'))
@@ -1344,8 +1413,8 @@ function speak(text, delay = 0, onend = null) {
     if (!voices.length) loadVoices();
     const utt = new SpeechSynthesisUtterance(text);
     utt.lang = 'zh-CN';
-    utt.rate = 0.85;
-    utt.pitch = 1.0;
+    utt.rate = TTS_RATE;
+    utt.pitch = TTS_PITCH;
     utt.volume = 1;
     const v = pickVoice();
     if (v) utt.voice = v;
@@ -1378,7 +1447,7 @@ function playAnswer(q, onend) {
 function speakDirect(text, onend) {
   if (!voices.length) loadVoices();
   const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = 'zh-CN'; utt.rate = 0.85; utt.pitch = 1.0; utt.volume = 1;
+  utt.lang = 'zh-CN'; utt.rate = TTS_RATE; utt.pitch = TTS_PITCH; utt.volume = 1;
   const v = pickVoice(); if (v) utt.voice = v;
   if (onend) utt.onend = onend;
   speechSynthesis.speak(utt);
@@ -1478,8 +1547,16 @@ function render() {
     btn.className = 'opt';
     btn.dataset.idx = i;
     btn.innerHTML = `<div class="otxt">${txt}</div>`;
-    btn.ontouchstart = () => {};
-    btn.addEventListener('click', e => onSel(e, i, btn));
+
+    // 防误触：touchstart 记录按下时间，touchend 判断是否达到阈值
+    let touchStart = 0;
+    btn.addEventListener('touchstart', () => { touchStart = Date.now(); }, { passive: true });
+    btn.addEventListener('touchend', e => {
+      if (Date.now() - touchStart >= OPT_TOUCH_DELAY) onSel(e, i, btn);
+    });
+    // PC 鼠标点击正常触发（无防误触需求）
+    btn.addEventListener('mouseup', e => { if (!('ontouchstart' in window)) onSel(e, i, btn); });
+
     opts.appendChild(btn);
   });
 
@@ -1527,7 +1604,8 @@ function revealBrowse(q) {
   document.querySelector('.btm').classList.add('active');
 
   // 答案播报延迟后播放
-  setTimeout(() => {
+  tAnswerTimer = setTimeout(() => {
+    tAnswerTimer = null;
     const startCountdown = () => startNRing();
     if (hints.length) {
       playAnswer(q, () => {
@@ -1626,7 +1704,8 @@ function revealAnswer() {
   document.querySelector('.btm').classList.add('active');
 
   // 答案播报延迟后播放，优先录音，无录音用 TTS
-  setTimeout(() => {
+  tAnswerTimer = setTimeout(() => {
+    tAnswerTimer = null;
     const startCountdown = () => startNRing();
     if (hints.length) {
       playAnswer(q, () => {
@@ -1640,9 +1719,8 @@ function revealAnswer() {
 
 // ── Next ───────────────────────────────────────────────────────
 function onNext() {
-  stopNRing(); stopAllPromptTimers();
+  stopNRing(); stopAllPromptTimers(); stopCelebration();
   speechSynthesis.cancel();
-  // 停止当前录音播放，保证倒计时和手动点击行为完全一致
   if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
   tone('next');
   qIdx=(qIdx+1)%Qs.length;
@@ -1694,18 +1772,45 @@ function stopNRing(){
   if(sec) sec.textContent='';
 }
 
-// ── Confetti ───────────────────────────────────────────────────
-let cRaf=null;
-function spawnConfetti(){
-  const cv=document.getElementById('cc'),ctx=cv.getContext('2d');
-  cv.width=window.innerWidth;cv.height=window.innerHeight;
-  const cols=['#1d4ed8','#15803d','#b45309','#be185d','#7c3aed','#0891b2'];
-  const ps=Array.from({length:90},()=>({x:Math.random()*cv.width,y:-12-Math.random()*50,vx:(Math.random()-.5)*6,vy:Math.random()*3+2,color:cols[Math.floor(Math.random()*cols.length)],w:Math.random()*9+4,h:Math.random()*4+3,rot:Math.random()*360,rs:(Math.random()-.5)*8,wb:Math.random()*3}));
-  let f=0; cancelAnimationFrame(cRaf);
-  (function draw(){
-    ctx.clearRect(0,0,cv.width,cv.height);let alive=false;
-    ps.forEach(p=>{p.x+=p.vx+Math.sin(f*.05+p.wb)*.4;p.y+=p.vy;p.vy+=.065;p.rot+=p.rs;if(p.y<cv.height+20)alive=true;ctx.save();ctx.globalAlpha=Math.max(0,1-p.y/(cv.height*1.1));ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);ctx.fillStyle=p.color;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();});
-    f++;if(alive)cRaf=requestAnimationFrame(draw);else ctx.clearRect(0,0,cv.width,cv.height);
+// ── Celebration animations ─────────────────────────────────────
+let cRaf = null;
+
+function stopCelebration() {
+  if (cRaf) { cancelAnimationFrame(cRaf); cRaf = null; }
+  const cv = document.getElementById('cc');
+  if (cv) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+}
+
+function spawnConfetti() {
+  const cv = document.getElementById('cc'), ctx = cv.getContext('2d');
+  stopCelebration();
+  cv.width = window.innerWidth; cv.height = window.innerHeight;
+  const cols = ['#1d4ed8','#15803d','#f59e0b','#be185d','#7c3aed','#0891b2'];
+  const ps = Array.from({length: 60}, () => ({
+    x: Math.random() * cv.width, y: -12 - Math.random() * 40,
+    vx: (Math.random() - .5) * 5, vy: Math.random() * 2.5 + 1.5,
+    color: cols[Math.floor(Math.random() * cols.length)],
+    w: Math.random() * 8 + 4, h: Math.random() * 4 + 3,
+    rot: Math.random() * 360, rs: (Math.random() - .5) * 7, wb: Math.random() * 3
+  }));
+  let f = 0;
+  (function draw() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    let alive = false;
+    ps.forEach(p => {
+      p.x += p.vx + Math.sin(f * .05 + p.wb) * .3;
+      p.y += p.vy; p.vy += .06; p.rot += p.rs;
+      if (p.y < cv.height + 20) alive = true;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - p.y / (cv.height * 1.1));
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    f++;
+    if (alive) cRaf = requestAnimationFrame(draw);
+    else ctx.clearRect(0, 0, cv.width, cv.height);
   })();
 }
 
@@ -1784,6 +1889,44 @@ function onDelayChange(v) {
   localStorage.setItem('delay', v);
 }
 
+function onTtsRateChange(v) {
+  TTS_RATE = parseFloat(v);
+  document.getElementById('tts-rate-val').textContent = parseFloat(v).toFixed(2);
+  localStorage.setItem('ttsRate', v);
+}
+function onTtsPitchChange(v) {
+  TTS_PITCH = parseFloat(v);
+  document.getElementById('tts-pitch-val').textContent = parseFloat(v).toFixed(1);
+  localStorage.setItem('ttsPitch', v);
+}
+function onTtsVoiceChange(name) {
+  TTS_VOICE_NAME = name;
+  localStorage.setItem('ttsVoiceName', name);
+}
+
+// 填充音色下拉列表（中文优先，其余附后）
+function populateVoiceList() {
+  const sel = document.getElementById('tts-voice');
+  if (!sel) return;
+  if (!voices.length) loadVoices();
+  const zhVoices = voices.filter(v => v.lang.startsWith('zh'));
+  const otherVoices = voices.filter(v => !v.lang.startsWith('zh'));
+  sel.innerHTML = '<option value="">自动（中文优先）</option>';
+  [...zhVoices, ...otherVoices].forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = `${v.name} (${v.lang})`;
+    if (v.name === TTS_VOICE_NAME) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function onOptTouchDelayChange(v) {
+  OPT_TOUCH_DELAY = parseInt(v);
+  document.getElementById('opt-touch-delay-val').textContent = `${v}ms`;
+  localStorage.setItem('optTouchDelay', v);
+}
+
 function onOptCount(v) {
   OPT_COUNT = parseInt(v);
   document.getElementById('opt-count-val').textContent = `${v}个`;
@@ -1827,13 +1970,23 @@ function loadSettings() {
   const pw = localStorage.getItem('phraseWrong');
   if (pw) PHRASE_WRONG = pw;
 
+  // TTS 音色参数
+  const ttsRate = localStorage.getItem('ttsRate');
+  if (ttsRate) TTS_RATE = parseFloat(ttsRate);
+  const ttsPitch = localStorage.getItem('ttsPitch');
+  if (ttsPitch) TTS_PITCH = parseFloat(ttsPitch);
+  const ttsVoiceName = localStorage.getItem('ttsVoiceName');
+  if (ttsVoiceName !== null) TTS_VOICE_NAME = ttsVoiceName;
+
   // 答案播报延迟
   const delay = localStorage.getItem('delay');
   if (delay) SPEAK_DELAY = parseFloat(delay) * 1000;
 
-  // 选项数量 / 倒计时
+  // 选项数量 / 倒计时 / 防误触
   const oc = localStorage.getItem('optCount');
   if (oc) OPT_COUNT = parseInt(oc);
+  const otd = localStorage.getItem('optTouchDelay');
+  if (otd !== null) OPT_TOUCH_DELAY = parseInt(otd);
   const ndur = localStorage.getItem('ndur');
   if (ndur) NDUR = parseFloat(ndur) * 1000;
   const bdur = localStorage.getItem('bdur');
@@ -1870,9 +2023,19 @@ function loadSettings() {
     const pohEl = document.getElementById('phrase-opt-hint');
     if (pohEl) pohEl.value = PHRASE_OPT_HINT;
 
+    // TTS 参数同步
+    const rateEl = document.getElementById('tts-rate');
+    if (rateEl) { rateEl.value = TTS_RATE; document.getElementById('tts-rate-val').textContent = TTS_RATE.toFixed(2); }
+    const pitchEl = document.getElementById('tts-pitch');
+    if (pitchEl) { pitchEl.value = TTS_PITCH; document.getElementById('tts-pitch-val').textContent = TTS_PITCH.toFixed(1); }
+    // 音色列表在语音列表加载后填充
+    populateVoiceList();
+
     // 选项数量
     const ocEl = document.getElementById('opt-count');
     if (ocEl) { ocEl.value = OPT_COUNT; document.getElementById('opt-count-val').textContent = `${OPT_COUNT}个`; }
+    const otdEl = document.getElementById('opt-touch-delay');
+    if (otdEl) { otdEl.value = OPT_TOUCH_DELAY; document.getElementById('opt-touch-delay-val').textContent = `${OPT_TOUCH_DELAY}ms`; }
 
     // 延迟滑块同步
     const qpdEl = document.getElementById('dbg-qpdelay');
@@ -1908,7 +2071,11 @@ function switchTab(n) {
   document.querySelectorAll('.sheet-tab').forEach((t,i)=>t.classList.toggle('active',i===n));
   document.querySelectorAll('.sheet-panel').forEach((p,i)=>p.classList.toggle('active',i===n));
 }
-function openSettings(){ document.getElementById('settings-overlay').classList.add('open'); }
+function openSettings(){
+  document.getElementById('settings-overlay').classList.add('open');
+  // 每次打开时刷新音色列表，确保 iOS 语音包加载后能显示
+  populateVoiceList();
+}
 function closeSettings(){ document.getElementById('settings-overlay').classList.remove('open'); }
 function closeSettingsIfOutside(e){ if(e.target===document.getElementById('settings-overlay'))closeSettings(); }
 
@@ -1931,12 +2098,11 @@ function toggleTheme(checkbox){
     });
 })();
 
-// ── PWA: register Service Worker ─────────────────────────────
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js')
-    .then(reg => console.log('[SW] registered', reg.scope))
-    .catch(e => console.warn('[SW] failed', e));
-}
+// Service Worker 暂未启用（GitHub Pages App-Bound Domain 限制）
+// 待绑定独立域名后恢复
+
+// 禁止长按右键菜单
+document.addEventListener('contextmenu', e => e.preventDefault());
 
 </script>
 </body>
