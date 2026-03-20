@@ -1128,11 +1128,16 @@ body {
       <div class="st-section">
         <div class="st-filter-row" id="st-filter-row">
           <span class="st-chip active" data-filter="all"           onclick="statsFilter(this,'all')">全部</span>
-          <span class="st-chip"        data-filter="stable"        onclick="statsFilter(this,'stable')">稳定</span>
-          <span class="st-chip"        data-filter="consolidating" onclick="statsFilter(this,'consolidating')">巩固中</span>
-          <span class="st-chip"        data-filter="introducing"   onclick="statsFilter(this,'introducing')">引入期</span>
           <span class="st-chip"        data-filter="declining"     onclick="statsFilter(this,'declining')">需关注</span>
-          <span class="st-chip"        data-filter="new"           onclick="statsFilter(this,'new')">未开始</span>
+          <span class="st-chip"        data-filter="introducing"   onclick="statsFilter(this,'introducing')">学习中</span>
+          <span class="st-chip"        data-filter="consolidating" onclick="statsFilter(this,'consolidating')">巩固中</span>
+          <span class="st-chip"        data-filter="stable"        onclick="statsFilter(this,'stable')">已掌握</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-top:8px;padding:0 2px">
+          <b style="color:var(--red)">需关注</b>：近期连续答错，需加强练习 ·
+          <b style="color:var(--ocean)">学习中</b>：刚开始，答对不足2次 ·
+          <b style="color:var(--blue)">巩固中</b>：答对2次以上 ·
+          <b style="color:var(--green)">已掌握</b>：答对4次且稳定
         </div>
       </div>
       <div class="st-section" id="st-card-list">
@@ -1171,7 +1176,6 @@ if (!Array.prototype.findLastIndex) {
 const SRS_CONFIG = {
   interval_ladder           : [0, 1, 2, 4],   // 会话次数阶梯
   day_cap_ladder            : [1, 3, 5, 7],   // 对应天数上限
-  t7_unlock_after_t1        : 3,              // T1答对N次后解锁T7
   max_introducing           : 3,             // 同时引入期卡片上限
   min_sessions_between_new  : 1,
   session_max_cards         : 10,
@@ -1306,7 +1310,10 @@ async function srsPut(store, key, val) {
   const db = await openSrsDb();
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).put(val, key);
+    const os = tx.objectStore(store);
+    // keyPath store（TRIAL_STORE 用 keyPath:'trial_id'）不能传外部 key
+    if (os.keyPath) os.put(val);
+    else os.put(val, key);
     tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
   });
 }
@@ -1419,7 +1426,7 @@ async function ensureCardInPool(deckKey, card, sessionCount, today) {
       card_id     : card.id,
       card_name   : card.name,
       category_1  : card.category_1 || '',
-      status      : 'preview_pending',    // 新卡：等待复习预热
+      status      : 'introducing',   // 新卡直接进入引入期，无需预热
       priority    : 1,
       next_session: sessionCount,
       next_date_cap: addDays(today, 1),
@@ -1443,13 +1450,6 @@ async function syncPoolForDeck(deckKey) {
 // ── isDue 判定（双轨触発）
 function isDue(entry, sessionCount, today) {
   return entry.next_session <= sessionCount || today >= entry.next_date_cap;
-}
-
-// ── T7 解锁チェック
-async function isT7Unlocked(deckKey, cardId) {
-  const k  = ctsKey(deckKey, cardId, 'T1');
-  const ct = await srsGet(CTS_STORE, k);
-  return ct && ct.repetitions >= SRS_CONFIG.t7_unlock_after_t1;
 }
 
 // ── 会话耐受度双速調整
@@ -1489,128 +1489,65 @@ function interleaveByCategory(items, maxConsec) {
   return out;
 }
 
-// ── 練習セッションキュー構築
+// ── 練習セッションキュー構築（T1 のみ）
 async function buildSessionQueue(deckKey) {
   await syncPoolForDeck(deckKey);
-  const pool       = await getPool(deckKey);
-  const sc         = getSessionCount();
-  const today      = todayStr();
-  const dp         = getDailyProgress();
-  const remaining  = SRS_CONFIG.daily_max_quiz_cards - dp.quiz_cards_completed;
+  const pool      = await getPool(deckKey);
+  const sc        = getSessionCount();
+  const today     = todayStr();
+  const dp        = getDailyProgress();
+  const remaining = SRS_CONFIG.daily_max_quiz_cards - dp.quiz_cards_completed;
   if (remaining <= 0) return [];
 
-  // 耐受度
   const toleranceKey = 'yihai_tolerance_' + deckKey;
-  const tolerance = parseInt(localStorage.getItem(toleranceKey) || String(SRS_CONFIG.tolerance_init));
-  const maxCards  = Math.min(tolerance, SRS_CONFIG.session_max_cards, remaining);
+  const tolerance    = parseInt(localStorage.getItem(toleranceKey) || String(SRS_CONFIG.tolerance_init));
+  const maxCards     = Math.min(tolerance, SRS_CONFIG.session_max_cards, remaining);
+  const allCards     = DECKS[deckKey] || [];
 
-  const allCards = DECKS[deckKey] || [];
+  // 活性エントリ（pending を除く）
+  const active = pool.filter(e => e.is_active && e.status !== 'pending');
 
-  // 活性エントリのみ（introducing / consolidating / stable / declining）
-  const active = pool.filter(e => e.is_active && e.status !== 'pending' && e.status !== 'preview_pending');
-
-  // T7到期の場合、同カードのT1も引き込む（予熱）
   const dueItems = [];
   for (const e of active) {
-    const t1Due = isDue(e, sc, today);
-    if (!t1Due) continue;
     const card = allCards.find(c => c.id === e.card_id);
     if (!card) continue;
-    // T1エントリ
-    const t1Cts = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T1'))
+    const cts = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T1'))
       || makeCardTypeState(deckKey, e.card_id, 'T1', sc, today);
-    dueItems.push({ entry: e, card, qType: 'T1', cts: t1Cts });
-
-    // T7解锁
-    if (t1Cts.repetitions >= SRS_CONFIG.t7_unlock_after_t1) {
-      const t7Cts = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T7'))
-        || makeCardTypeState(deckKey, e.card_id, 'T7', sc, today);
-      if (isDue(t7Cts, sc, today)) {
-        // T7到期時：先T1(已在)再T7 — T7を別エントリとして追加
-        dueItems.push({ entry: e, card, qType: 'T7', cts: t7Cts });
-      }
-    }
+    if (!isDue(cts, sc, today)) continue;
+    dueItems.push({ entry: e, card, cts });
   }
 
-  // P4: decline_score < alert (最優先)
+  // 优先级分桶
   const p4 = dueItems.filter(d => d.cts.decline_score < SRS_CONFIG.decline_score_alert);
-  // P3: 初期カード
   const p3 = dueItems.filter(d => !p4.includes(d) && d.cts.repetitions < 2);
-  // P2: その他
   const p2 = dueItems.filter(d => !p4.includes(d) && !p3.includes(d));
 
-  const quota    = Math.floor(maxCards * SRS_CONFIG.ratio_review);
-  let candidates = [...p4, ...p3];
-  candidates = [...candidates, ...p2.slice(0, Math.max(0, quota - candidates.length))];
-
-  // 新卡補充 (introducing: status=introducing)
-  const newEntries = pool.filter(e => e.is_active && e.status === 'introducing'
-    && !candidates.find(c => c.entry.card_id === e.card_id));
-  const introducingCount = pool.filter(e => e.status === 'introducing').length;
-  if (introducingCount < SRS_CONFIG.max_introducing) {
-    const newQuota = Math.floor(maxCards * SRS_CONFIG.ratio_new);
-    for (const e of newEntries.slice(0, newQuota)) {
-      const card = allCards.find(c => c.id === e.card_id);
-      if (!card) continue;
-      const t1Cts = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T1'))
-        || makeCardTypeState(deckKey, e.card_id, 'T1', sc, today);
-      candidates.push({ entry: e, card, qType: 'T1', cts: t1Cts });
-    }
-  }
-
-  candidates = candidates.slice(0, maxCards);
-
-  // T7の前に必ずT1が来るよう並べ替え
-  const ordered = [];
-  const t7Later = [];
-  candidates.forEach(d => {
-    if (d.qType === 'T7') t7Later.push(d);
-    else ordered.push(d);
-  });
-  // T7 を同カードのT1直後に挿入
-  t7Later.forEach(t7 => {
-    const t1Idx = ordered.findLastIndex(d => d.card.id === t7.card.id && d.qType === 'T1');
-    if (t1Idx >= 0) ordered.splice(t1Idx + 1, 0, t7);
-    else ordered.push(t7);
-  });
-
-  return interleaveByCategory(ordered, SRS_CONFIG.max_same_category_consecutive);
+  let candidates = [...p4, ...p3, ...p2].slice(0, maxCards);
+  return interleaveByCategory(candidates, SRS_CONFIG.max_same_category_consecutive);
 }
 
-// ── 復習キュー構築
+// ── 復習キュー構築（SRS 優先度順、browse フラグ付き）
 async function buildPreviewQueue(deckKey) {
   await syncPoolForDeck(deckKey);
-  const pool  = await getPool(deckKey);
-  const sc    = getSessionCount();
-  const today = todayStr();
+  const pool     = await getPool(deckKey);
+  const sc       = getSessionCount();
+  const today    = todayStr();
   const allCards = DECKS[deckKey] || [];
 
+  // pending を除く全カード
   const seen = pool.filter(e => e.is_active && e.status !== 'pending');
 
-  // preview_pending → introducing (今回の复习で曝光)
-  for (const e of seen) {
-    if (e.status === 'preview_pending') {
-      e.status = 'introducing';
-      e.updated_at = Date.now();
-      await srsPut(POOL_STORE, poolKey(e.deck_key, e.card_id), e);
-      // T1のCardTypeState作成
-      const k = ctsKey(e.deck_key, e.card_id, 'T1');
-      const existing = await srsGet(CTS_STORE, k);
-      if (!existing) {
-        const newCts = makeCardTypeState(e.deck_key, e.card_id, 'T1', sc, today);
-        await srsPut(CTS_STORE, k, newCts);
-      }
-    }
-  }
+  // CTS の next 値で紧迫度ソート
+  const withUrgency = await Promise.all(seen.map(async e => {
+    const cts = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T1'));
+    const urgency = cts
+      ? Math.min(cts.next_session - sc, daysBetween(today, cts.next_date_cap))
+      : 0;
+    return { e, urgency };
+  }));
+  withUrgency.sort((a, b) => a.urgency - b.urgency);
 
-  // 紧迫度ソート
-  seen.sort((a, b) => {
-    const aU = Math.min(a.next_session - sc, daysBetween(today, a.next_date_cap));
-    const bU = Math.min(b.next_session - sc, daysBetween(today, b.next_date_cap));
-    return aU - bU;
-  });
-
-  return seen.slice(0, SRS_CONFIG.preview_max_cards).map(e => {
+  return withUrgency.slice(0, SRS_CONFIG.preview_max_cards).map(({ e }) => {
     const card = allCards.find(c => c.id === e.card_id);
     return card ? { ...card, _poolEntry: e, browse: true } : null;
   }).filter(Boolean);
@@ -1656,7 +1593,7 @@ async function getDeckStatsAsync(deckKey) {
   for (const e of pool) {
     if (!e.is_active) continue;
     // 新卡（完全未开始）
-    if (e.status === 'pending' || e.status === 'preview_pending') { newC++; continue; }
+    if (e.status === 'pending') { newC++; continue; }
     // 直接读 T1 的 CTS 判断是否到期（比 pool 冗余字段更准确）
     const t1 = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T1'));
     if (t1 && isDue(t1, sc, today)) due++;
@@ -1983,12 +1920,13 @@ async function updateDeckStats() {
 }
 
 // ── Session SRS state
-let srsSessionQueue   = [];   // [{ entry, card, qType, cts }] for quiz mode
-let srsSessionIdx     = 0;
-let srsSessionId      = '';
-let srsSessionQs      = [];   // q値 history for tolerance
-let srsAttemptNumber  = 1;    // 現在のカードの試行回数
-let srsCurrentDistractorCard = null;  // 答え間違えた干扰项カード
+let srsSessionQueue  = [];
+let srsSessionId     = '';
+let srsSessionQs     = [];   // q 值历史，用于耐受度调整
+let srsAttemptNumber = 1;
+let srsCurrentDistractorCard = null;
+// 答错重现队列：答错后把该卡追加到队列末尾，当次 session 内再出一次
+let wrongRetryQueue  = [];
 
 function startBrowse() {
   if (!currentDeck) return;
@@ -2006,19 +1944,18 @@ function startQuiz() {
   _launch('quiz');
 }
 async function _launch(mode) {
-  currentMode = mode;
+  currentMode  = mode;
   srsSessionId = 'sess_' + Date.now();
+  wrongRetryQueue = [];
 
   if (mode === 'quiz') {
-    const sessionCount = incSessionCount();
+    incSessionCount();
     srsSessionQueue = await buildSessionQueue(currentDeck);
     if (!srsSessionQueue.length) {
-      // 今日の練習が全部完了または到期カードなし
       showNoCardsToast();
       return;
     }
-    srsSessionIdx = 0;
-    srsSessionQs  = [];
+    srsSessionQs = [];
     Qs = srsSessionQueue.map(d => {
       const { options, correct } = buildOptions(d.card, DECKS[currentDeck] || []);
       return { ...d.card, options, correct, _srs: d };
@@ -2031,14 +1968,12 @@ async function _launch(mode) {
     }
     Qs = previewCards;
   } else {
-    // browse
-    Qs = getDeck(currentDeck);
-    Qs = Qs.map(q => ({ ...q, browse: true }));
+    Qs = getDeck(currentDeck).map(q => ({ ...q, browse: true }));
   }
 
   qIdx = 0;
   document.getElementById('nxt-lbl').textContent =
-    mode === 'browse' ? '下一张' : mode === 'preview' ? '下一张' : '下一题';
+    (mode === 'browse' || mode === 'preview') ? '下一张' : '下一题';
   showScreen('screen-quiz');
   render();
 }
@@ -2059,8 +1994,7 @@ function goHome() {
   if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
   const fo = document.getElementById('finish-overlay');
   if (fo) fo.remove();
-  const t7p = document.getElementById('t7-panel');
-  if (t7p) t7p.style.display = 'none';
+  wrongRetryQueue = [];
   renderDeckList();
   updateDeckStats();
   showScreen('screen-home');
@@ -2246,27 +2180,16 @@ function render() {
     timg.textContent = imgSrc;
   }
 
-  // T7 命名题（照护者评分模式）
-  if (q._srs && q._srs.qType === 'T7') {
-    renderT7(q);
-    return;
-  }
-
   // Browse / Preview mode
   if (q.browse) {
     document.getElementById('opts-zone').style.display = 'none';
     document.getElementById('content').classList.add('revealed');
     document.getElementById('subbtn').className = 'subbtn gone';
-    // hide T7 panel if visible
-    const t7p = document.getElementById('t7-panel');
-    if (t7p) t7p.style.display = 'none';
     revealBrowse(q);
     return;
   }
 
   // T1 选择题
-  const t7p = document.getElementById('t7-panel');
-  if (t7p) t7p.style.display = 'none';
   document.getElementById('opts-zone').style.display = '';
   const opts = document.getElementById('opts');
   opts.innerHTML = '';
@@ -2307,94 +2230,6 @@ function render() {
   stopAllPromptTimers();
   const pickedTexts = picked.map(({txt}) => txt);
   startCardPrompts(pickedTexts);
-}
-
-// ── T7 命名题渲染（照护者评分）
-function renderT7(q) {
-  document.getElementById('opts-zone').style.display = 'none';
-  document.getElementById('content').classList.add('revealed');
-  document.getElementById('subbtn').className = 'subbtn gone';
-  stopAllPromptTimers();
-
-  // 显示答案名称（照护者看）
-  document.getElementById('answer-panel').className = 'answer-panel show';
-  document.getElementById('ans-word').textContent = q.name;
-  document.getElementById('ans-details').innerHTML = '';
-
-  // T7 评分面板
-  let t7p = document.getElementById('t7-panel');
-  if (!t7p) {
-    t7p = document.createElement('div');
-    t7p.id = 't7-panel';
-    t7p.style.cssText = `padding:14px 16px 0;display:flex;flex-direction:column;gap:10px;`;
-    document.querySelector('.btm').before(t7p);
-  }
-  t7p.style.display = 'flex';
-  t7p.innerHTML = `
-    <div style="font-size:13px;font-weight:600;color:var(--text2);text-align:center;padding-bottom:4px">
-      📋 照护者评分：患者能说出名称吗？
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      ${[
-        { score: 3, label: '①自主命名', sub: '直接说出' },
-        { score: 2, label: '②提示后说出', sub: '给提示后说出' },
-        { score: 1, label: '③描述功能', sub: '说不出名字' },
-        { score: 0, label: '④完全不认识', sub: '无任何反应' },
-      ].map(o => `
-        <button onclick="onT7Score(${o.score})"
-          style="padding:12px 8px;border:2px solid var(--bd2);border-radius:14px;
-            background:var(--surf);font-family:inherit;cursor:pointer;
-            font-size:15px;font-weight:700;color:var(--text);
-            -webkit-tap-highlight-color:transparent;line-height:1.4;text-align:center;
-            transition:background .15s,border-color .15s;">
-          <div>${o.label}</div>
-          <div style="font-size:11px;font-weight:400;color:var(--text2);margin-top:3px">${o.sub}</div>
-        </button>`).join('')}
-    </div>
-    <div style="font-size:11px;color:var(--text3);text-align:center;padding-top:2px">
-      提示顺序：语义类别 → 功能用途 → 首音
-    </div>`;
-
-  // 次ボタンを非表示（評分後に自動遷移）
-  const nb = document.getElementById('nxtbtn');
-  nb.className = 'nxtbtn';
-  document.querySelector('.btm').classList.remove('active');
-}
-
-// T7 評分処理
-async function onT7Score(score) {
-  const q = Qs[qIdx];
-  if (!q._srs) { onNext(); return; }
-
-  const { cts, card } = q._srs;
-  const sc    = getSessionCount();
-  const today = todayStr();
-  const qval  = toSM2Grade(null, null, score, null, null);
-
-  updateCardTypeState(cts, qval, sc, today);
-  await srsPut(CTS_STORE, ctsKey(currentDeck, card.id, 'T7'), cts);
-  await updatePoolStatus(currentDeck, card.id);
-
-  // TrialLog
-  const trial = {
-    trial_id        : 'tl_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-    card_id         : card.id,
-    session_id      : srsSessionId,
-    question_type   : 'T7',
-    t7_score        : score,
-    q_value         : qval,
-    is_correct      : score >= 2,
-    attempt_number  : 1,
-    practice_mode   : 'quiz',
-    timestamp       : Date.now(),
-    decline_score_before: cts.decline_score,
-  };
-  await saveTrialLog(trial);
-
-  // 評分後は答案TTS再生してonNext
-  const t7p = document.getElementById('t7-panel');
-  if (t7p) t7p.style.display = 'none';
-  playAnswer(q, () => setTimeout(onNext, 600));
 }
 
 function revealBrowse(q) {
@@ -2469,6 +2304,14 @@ function onSel(e, idx, btn, distractorCard) {
         setTimeout(() => btn.remove(), 300);
       });
       if (WRONG_HINT_ON) speak(PHRASE_WRONG);
+      // 答错一次：把本题追加到队列末尾（session 内重现）
+      if (currentMode === 'quiz' && !Qs[qIdx]._retrying) {
+        const retry = { ...Qs[qIdx], _retrying: true };
+        // 重新生成选项，保证干扰项顺序不同
+        const { options, correct } = buildOptions(retry, DECKS[currentDeck] || []);
+        retry.options = options; retry.correct = correct;
+        Qs.push(retry);
+      }
     } else {
       revealAnswer();
     }
@@ -2536,7 +2379,7 @@ function revealAnswer() {
   }
 }
 
-// SRS 書き込み専用 async（revealAnswer とは切り離す）
+// SRS 书写专用 async（与 revealAnswer UI 切离）
 async function _writeSrsT1(q, isOk) {
   const { cts, card } = q._srs;
   const sc    = getSessionCount();
@@ -2547,27 +2390,30 @@ async function _writeSrsT1(q, isOk) {
   await srsPut(CTS_STORE, ctsKey(currentDeck, card.id, 'T1'), cts);
   await updatePoolStatus(currentDeck, card.id);
 
-  const dp = getDailyProgress();
-  dp.quiz_cards_completed++;
-  saveDailyProgress(dp);
+  // 重现卡（_retrying）只更新 SRS，不计进度也不重写 TrialLog
+  if (!q._retrying) {
+    const dp = getDailyProgress();
+    dp.quiz_cards_completed++;
+    saveDailyProgress(dp);
 
-  const trial = {
-    trial_id            : 'tl_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-    card_id             : card.id,
-    session_id          : srsSessionId,
-    question_type       : 'T1',
-    is_correct          : isOk,
-    attempt_number      : srsAttemptNumber,
-    distractor_chosen   : srsCurrentDistractorCard ? srsCurrentDistractorCard.id : null,
-    distractor_same_cat : srsCurrentDistractorCard
-      ? (srsCurrentDistractorCard.category_1 === card.category_1) : null,
-    q_value             : qval,
-    practice_mode       : 'quiz',
-    timestamp           : Date.now(),
-    decline_score_before: cts.decline_score,
-  };
-  await saveTrialLog(trial);
-  srsSessionQs.push(qval);
+    const trial = {
+      trial_id            : 'tl_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      card_id             : card.id,
+      session_id          : srsSessionId,
+      question_type       : 'T1',
+      is_correct          : isOk,
+      attempt_number      : srsAttemptNumber,
+      distractor_chosen   : srsCurrentDistractorCard ? srsCurrentDistractorCard.id : null,
+      distractor_same_cat : srsCurrentDistractorCard
+        ? (srsCurrentDistractorCard.category_1 === card.category_1) : null,
+      q_value             : qval,
+      practice_mode       : 'quiz',
+      timestamp           : Date.now(),
+      decline_score_before: cts.decline_score,
+    };
+    await saveTrialLog(trial);
+    srsSessionQs.push(qval);
+  }
 
   if (cts.decline_score < SRS_CONFIG.decline_score_alert) {
     showDeclineAlert(card.name);
@@ -3107,59 +2953,58 @@ function statsFilter(el, filter) {
 
 // ════════ TAB 0：今日概况 ════════
 async function loadStatsOverview() {
-  const today = todayStr();
-  const sc    = getSessionCount();
-  const dp    = getDailyProgress();
+  const today    = todayStr();
+  const sc       = getSessionCount();
+  const dp       = getDailyProgress();
+  const allCards = DECKS[currentDeck] || [];
+  const deckCardIds = new Set(allCards.map(c => c.id));
 
-  // 今天的 trial 记录
+  // 从 IndexedDB 读所有 trial，只保留当前牌组 + 非重现卡
   const allTrials = await srsGetAll(TRIAL_STORE);
-  const todayTrials = allTrials.filter(t =>
-    t.practice_mode === 'quiz' &&
+  const deckTrials = allTrials.filter(t => deckCardIds.has(t.card_id) && !t._retrying);
+  const todayTrials = deckTrials.filter(t =>
     new Date(t.timestamp).toISOString().slice(0, 10) === today
   );
   const todayOk   = todayTrials.filter(t => t.is_correct).length;
   const todayFail = todayTrials.filter(t => !t.is_correct).length;
-  const acc       = todayTrials.length > 0
-    ? Math.round(todayOk / todayTrials.length * 100) + '%' : '—';
+  const total     = todayTrials.length;
+  const acc       = total > 0 ? Math.round(todayOk / total * 100) + '%' : '—';
 
-  setText('sm-done', dp.quiz_cards_completed || todayTrials.length || 0);
+  setText('sm-done', dp.quiz_cards_completed);
   setText('sm-ok',   todayOk);
   setText('sm-fail', todayFail);
   setText('sm-acc',  acc);
 
-  const max = SRS_CONFIG.daily_max_quiz_cards;
+  const max  = SRS_CONFIG.daily_max_quiz_cards;
   const done = dp.quiz_cards_completed;
   setText('sm-progress-txt', `${done} / ${max} 张`);
-  const pct = Math.min(done / max * 100, 100);
-  document.getElementById('sm-progress-bar').style.width = pct + '%';
-  const hint = done >= max ? '今天已完成全部！' : `还剩 ${max - done} 张`;
-  setText('sm-progress-hint', hint);
+  document.getElementById('sm-progress-bar').style.width = Math.min(done / max * 100, 100) + '%';
+  setText('sm-progress-hint', done >= max ? '今天已完成全部！🎉' : `还剩 ${max - done} 张`);
 
-  // 近7天柱状图（从 TrialLog 按日期聚合）
+  // 近7天：按日期统计不重复答题的卡片数（去掉重现卡）
   const last7 = [];
+  const dayNames = ['日','一','二','三','四','五','六'];
   for (let i = 6; i >= 0; i--) {
-    const d = addDays(today, -i);
-    const cnt = allTrials.filter(t =>
-      t.practice_mode === 'quiz' &&
+    const d   = addDays(today, -i);
+    const day = new Date(d + 'T00:00:00');
+    // 当天唯一卡片数（_retrying 不算）
+    const dayTrials = deckTrials.filter(t =>
       new Date(t.timestamp).toISOString().slice(0, 10) === d
-    ).length;
-    const dayNames = ['日','一','二','三','四','五','六'];
-    const dayOfWeek = new Date(d + 'T00:00:00').getDay();
-    last7.push({ date: d, count: cnt, lbl: i === 0 ? '今天' : '周' + dayNames[dayOfWeek] });
+    );
+    const cnt = new Set(dayTrials.map(t => t.card_id)).size;
+    last7.push({ count: cnt, lbl: i === 0 ? '今天' : '周' + dayNames[day.getDay()] });
   }
   renderWeekChart(last7);
 
-  // 总体：pool 状态统计
+  // 总体
   await syncPoolForDeck(currentDeck);
-  const pool = await getPool(currentDeck);
+  const pool     = await getPool(currentDeck);
   const stable   = pool.filter(e => e.status === 'stable').length;
   const declining= pool.filter(e => e.status === 'declining').length;
   setText('sm-sessions',  sc);
   setText('sm-stable',    stable);
   setText('sm-declining', declining || '0');
-  if (declining > 0) {
-    document.getElementById('sm-declining').classList.add('st-red');
-  }
+  if (declining > 0) document.getElementById('sm-declining').classList.add('st-red');
 }
 
 function renderWeekChart(data) {
@@ -3188,31 +3033,25 @@ async function loadStatsCards() {
   for (const entry of pool) {
     const card = allCards.find(c => c.id === entry.card_id);
     if (!card) continue;
-
-    const t1 = await srsGet(CTS_STORE, ctsKey(currentDeck, card.id, 'T1'));
-    const t7 = await srsGet(CTS_STORE, ctsKey(currentDeck, card.id, 'T7'));
-
-    const rep1  = t1 ? t1.repetitions : 0;
-    const rep7  = t7 ? t7.repetitions : 0;
-    const ds    = t1 ? t1.decline_score : (entry.status === 'pending' || entry.status === 'preview_pending' ? null : 0.5);
-    const due   = t1 ? isDue(t1, sc, today) : false;
-    const next  = t1 ? t1.next_date_cap : null;
-
-    // 计算显示用 status
-    let status = entry.status;
-    if (status === 'pending' || status === 'preview_pending') status = 'new';
-
-    rows.push({ card, entry, t1, t7, rep1, rep7, ds, due, next, status });
+    const t1  = await srsGet(CTS_STORE, ctsKey(currentDeck, card.id, 'T1'));
+    const rep = t1 ? t1.repetitions : 0;
+    const ds  = t1 ? t1.decline_score : null;
+    const due = t1 ? isDue(t1, sc, today) : (entry.status !== 'pending');
+    const next = t1 ? t1.next_date_cap : null;
+    const status = entry.status === 'pending' ? 'pending' : entry.status;
+    rows.push({ card, entry, t1, rep, ds, due, next, status });
   }
 
   _statsCardData = rows;
-  // 更新 chip 上的数量
-  const counts = { all: rows.length, stable: 0, consolidating: 0, introducing: 0, declining: 0, new: 0 };
+
+  // 状态计数更新 chip
+  const counts = { all: rows.length, stable: 0, consolidating: 0, introducing: 0, declining: 0 };
   rows.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
+  const labelMap = { all:'全部', stable:'已掌握', consolidating:'巩固中', introducing:'学习中', declining:'需关注' };
   document.querySelectorAll('.st-chip').forEach(c => {
     const f = c.dataset.filter;
-    const n = counts[f];
-    if (n !== undefined) c.textContent = { all:'全部', stable:'稳定', consolidating:'巩固中', introducing:'引入期', declining:'需关注', new:'未开始' }[f] + (f !== 'all' ? ` ${n}` : ` ${counts.all}`);
+    if (counts[f] !== undefined)
+      c.textContent = labelMap[f] + (f === 'all' ? ` ${counts.all}` : ` ${counts[f]}`);
   });
 
   renderCardList(rows, _statsCurrentFilter);
@@ -3222,119 +3061,126 @@ function renderCardList(rows, filter) {
   const el = document.getElementById('st-card-list');
   const filtered = filter === 'all' ? rows : rows.filter(r => r.status === filter);
   if (!filtered.length) {
-    el.innerHTML = `<div class="st-empty">没有符合条件的卡片</div>`;
+    el.innerHTML = '<div class="st-empty">没有符合条件的卡片</div>';
     return;
   }
-  // 按退化得分升序（低的排前面）
+  const orderMap = { declining:0, introducing:1, consolidating:2, stable:3, pending:4 };
   filtered.sort((a, b) => {
-    if (a.ds === null) return 1;
-    if (b.ds === null) return -1;
-    return a.ds - b.ds;
+    const od = (orderMap[a.status]??5) - (orderMap[b.status]??5);
+    if (od !== 0) return od;
+    return (a.ds??0.5) - (b.ds??0.5);
   });
-
+  const pillCfg = {
+    stable:        { label:'已掌握', cls:'stable' },
+    consolidating: { label:'巩固中', cls:'consolidating' },
+    introducing:   { label:'学习中', cls:'introducing' },
+    declining:     { label:'需关注', cls:'declining' },
+    pending:       { label:'待开始', cls:'new' },
+  };
   el.innerHTML = filtered.map(r => {
     const imgHtml = r.card.img && r.card.img.length > 4
-      ? `<img src="${r.card.img}">`
-      : `<span style="font-size:22px">${r.card.img || '🃏'}</span>`;
-
-    const meta = r.status === 'new'
-      ? '未开始练习'
-      : `T1 ×${r.rep1}${r.rep7 > 0 ? ` · T7 ×${r.rep7}` : ''}${r.due ? ' · <span style="color:var(--ocean);font-weight:600">今日到期</span>' : r.next ? ` · 下次: ${r.next.slice(5)}` : ''}`;
-
-    const dsVal  = r.ds !== null ? Math.round(r.ds * 100) : null;
-    const dsColor = r.ds === null ? 'var(--border)' :
-                    r.ds < 0.2   ? 'var(--red)' :
-                    r.ds < 0.4   ? '#f59e0b' :
-                    r.ds < 0.65  ? 'var(--blue)' : 'var(--green)';
-    const dsBar  = dsVal !== null
-      ? `<div class="st-ds-bg"><div class="st-ds-fill" style="width:${dsVal}%;background:${dsColor}"></div></div>`
+      ? '<img src="' + r.card.img + '">'
+      : '<span style="font-size:22px">' + (r.card.img || '🃏') + '</span>';
+    let meta;
+    if (r.status === 'pending') {
+      meta = '尚未开始练习';
+    } else {
+      const repTxt = '已答对 ' + r.rep + ' 次';
+      const dueTxt = r.due
+        ? '<span style="color:var(--ocean);font-weight:600">今日到期</span>'
+        : r.next ? '下次 ' + r.next.slice(5) : '';
+      meta = repTxt + (dueTxt ? ' · ' + dueTxt : '');
+    }
+    const dsVal   = (r.ds !== null && r.ds !== undefined) ? Math.round(r.ds * 100) : null;
+    const dsColor = r.ds == null ? 'var(--border)'
+                  : r.ds < 0.2  ? 'var(--red)'
+                  : r.ds < 0.4  ? '#f59e0b'
+                  : r.ds < 0.65 ? 'var(--blue)' : 'var(--green)';
+    const dsBar = dsVal !== null
+      ? '<div class="st-ds-bg"><div class="st-ds-fill" style="width:' + dsVal + '%;background:' + dsColor + '"></div></div>'
       : '';
-
-    const pillLabel = { stable:'稳定', consolidating:'巩固中', introducing:'引入期', declining:'需关注', new:'待引入' }[r.status] || r.status;
-    return `<div class="st-card-row${r.status === 'declining' ? ' declining' : ''}">
-      <div class="st-card-img">${imgHtml}</div>
-      <div class="st-card-info">
-        <div class="st-card-name">${r.card.name}</div>
-        <div class="st-card-meta">${meta}</div>
-        ${dsBar}
-      </div>
-      <div class="st-card-right">
-        <div class="st-pill ${r.status}">${pillLabel}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">${dsVal !== null ? (dsVal/100).toFixed(2) : '—'}</div>
-      </div>
-    </div>`;
+    const pill = pillCfg[r.status] || { label: r.status, cls: 'new' };
+    return '<div class="st-card-row' + (r.status==='declining'?' declining':'') + '">'
+      + '<div class="st-card-img">' + imgHtml + '</div>'
+      + '<div class="st-card-info">'
+      +   '<div class="st-card-name">' + r.card.name + '</div>'
+      +   '<div class="st-card-meta">' + meta + '</div>'
+      +   dsBar
+      + '</div>'
+      + '<div class="st-card-right">'
+      +   '<div class="st-pill ' + pill.cls + '">' + pill.label + '</div>'
+      +   '<div style="font-size:11px;color:var(--muted);margin-top:4px">' + (dsVal!==null?(dsVal/100).toFixed(2):'—') + '</div>'
+      + '</div>'
+      + '</div>';
   }).join('');
 }
 
 // ════════ TAB 2：练习记录 ════════
 async function loadStatsTrials() {
-  const allTrials = await srsGetAll(TRIAL_STORE);
-  const allCards  = DECKS[currentDeck] || [];
+  const allCards    = DECKS[currentDeck] || [];
+  const deckCardIds = new Set(allCards.map(c => c.id));
+  const allTrials   = await srsGetAll(TRIAL_STORE);
 
-  // 只显示当前牌组的 trial，按时间倒序，最多50条
+  // 只取当前牌组、非重现卡的记录，时间倒序，最多50条
   const trials = allTrials
-    .filter(t => {
-      const card = allCards.find(c => c.id === t.card_id);
-      return !!card;
-    })
+    .filter(t => deckCardIds.has(t.card_id) && !t._retrying)
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 50);
 
   const trialEl = document.getElementById('st-trial-list');
   if (!trials.length) {
-    trialEl.innerHTML = `<div class="st-empty">还没有练习记录</div>`;
+    trialEl.innerHTML = '<div class="st-empty">还没有练习记录</div>';
   } else {
     trialEl.innerHTML = trials.map(t => {
-      const card = allCards.find(c => c.id === t.card_id);
-      const name = card ? card.name : t.card_id;
-      const ok   = t.is_correct;
-      const time = new Date(t.timestamp);
-      const timeStr = `${time.getMonth()+1}/${time.getDate()} ${String(time.getHours()).padStart(2,'0')}:${String(time.getMinutes()).padStart(2,'0')}`;
-      let meta = t.question_type === 'T7'
-        ? `T7 · ${['完全不认识','描述功能','提示后命名','自主命名'][t.t7_score ?? 0]} · ${timeStr}`
-        : `T1 · 第${t.attempt_number}次作答 · ${timeStr}`;
+      const card    = allCards.find(c => c.id === t.card_id);
+      const name    = card ? card.name : t.card_id;
+      const ok      = t.is_correct;
+      const time    = new Date(t.timestamp);
+      const timeStr = (time.getMonth()+1) + '/' + time.getDate() + ' '
+        + String(time.getHours()).padStart(2,'0') + ':' + String(time.getMinutes()).padStart(2,'0');
+      let meta    = '第' + t.attempt_number + '次作答 · ' + timeStr;
       let metaCls = '';
-      if (!ok && t.question_type === 'T1') {
+      if (!ok) {
         const wrongCard = allCards.find(c => c.id === t.distractor_chosen);
-        const wrongName = wrongCard ? wrongCard.name : '未知';
-        meta = `误选「${wrongName}」${t.distractor_same_cat ? '（同类别）' : ''} · ${timeStr}`;
+        const wrongName = wrongCard ? wrongCard.name : '未知选项';
+        meta    = '误选「' + wrongName + '」' + (t.distractor_same_cat ? '（同类别）' : '') + ' · ' + timeStr;
         metaCls = 'fail';
       }
-      return `<div class="st-trial-row">
-        <div class="st-trial-dot ${ok ? 'ok' : 'fail'}">${ok ? '✓' : '✗'}</div>
-        <div class="st-trial-info">
-          <div class="st-trial-name">${name} · ${t.question_type}</div>
-          <div class="st-trial-meta ${metaCls}">${meta}</div>
-        </div>
-        <div class="st-qval${ok ? '' : ' fail'}">q=${t.q_value}</div>
-      </div>`;
+      return '<div class="st-trial-row">'
+        + '<div class="st-trial-dot ' + (ok?'ok':'fail') + '">' + (ok?'✓':'✗') + '</div>'
+        + '<div class="st-trial-info">'
+        +   '<div class="st-trial-name">' + name + '</div>'
+        +   '<div class="st-trial-meta ' + metaCls + '">' + meta + '</div>'
+        + '</div>'
+        + '<div class="st-qval' + (ok?'':' fail') + '">q=' + (t.q_value??'—') + '</div>'
+        + '</div>';
     }).join('');
   }
 
-  // 混淆统计：从 trials 聚合
+  // 混淆统计
   const confMap = {};
   allTrials
-    .filter(t => !t.is_correct && t.distractor_chosen && allCards.find(c => c.id === t.card_id))
+    .filter(t => deckCardIds.has(t.card_id) && !t.is_correct && t.distractor_chosen)
     .forEach(t => {
       const key = t.card_id + '→' + t.distractor_chosen;
-      if (!confMap[key]) confMap[key] = { cardId: t.card_id, wrongId: t.distractor_chosen, count: 0, sameCat: !!t.distractor_same_cat };
+      if (!confMap[key]) confMap[key] = { cardId:t.card_id, wrongId:t.distractor_chosen, count:0, sameCat:!!t.distractor_same_cat };
       confMap[key].count++;
     });
 
   const confEl = document.getElementById('st-confusion-list');
-  const confs  = Object.values(confMap).sort((a, b) => b.count - a.count).slice(0, 8);
+  const confs  = Object.values(confMap).sort((a,b) => b.count - a.count).slice(0, 8);
   if (!confs.length) {
-    confEl.innerHTML = `<div class="st-empty">暂无混淆记录</div>`;
+    confEl.innerHTML = '<div class="st-empty">暂无混淆记录（答错后会出现）</div>';
   } else {
     confEl.innerHTML = confs.map(c => {
       const card  = allCards.find(x => x.id === c.cardId);
       const wrong = allCards.find(x => x.id === c.wrongId);
-      return `<div class="st-conf-row">
-        <div class="st-conf-name">${card ? card.name : '?'}</div>
-        <div class="st-conf-arrow">→ 误选</div>
-        <div class="st-conf-wrong">${wrong ? wrong.name : '?'}</div>
-        <div class="st-conf-cnt">${c.count}次${c.sameCat ? ' · 同类别' : ''}</div>
-      </div>`;
+      return '<div class="st-conf-row">'
+        + '<div class="st-conf-name">' + (card?.name??'?') + '</div>'
+        + '<div class="st-conf-arrow">→ 误选</div>'
+        + '<div class="st-conf-wrong">' + (wrong?.name??'?') + '</div>'
+        + '<div class="st-conf-cnt">' + c.count + '次' + (c.sameCat?' · 同类别':'') + '</div>'
+        + '</div>';
     }).join('');
   }
 }
