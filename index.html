@@ -592,7 +592,7 @@ body {
     <div class="home-topbar">
       <div class="home-title-wrap">
         <span class="home-title">忆海拾光</span>
-        <span class="home-version">v3.3</span>
+        <span class="home-version">v3.6</span>
         <button class="home-refresh-btn" onclick="forceRefresh()" aria-label="强制刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -739,6 +739,34 @@ body {
             <input type="range" min="0" max="15" value="4" step="1" id="dbg-bdur" oninput="onBdurChange(this.value)">
             <span class="sheet-row-val" id="dbg-bdur-val">4s</span>
           </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">浏览答案显示延迟</span>
+            <input type="range" min="0" max="10" value="3" step="0.5" id="dbg-browse-ans-delay" oninput="onBrowseAnsDelayChange(this.value)">
+            <span class="sheet-row-val" id="dbg-browse-ans-delay-val">3s</span>
+          </div>
+        </div>
+        <div class="sheet-section">
+          <div class="sheet-section-lbl">答对反馈</div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">撒花动画</span>
+            <label class="stoggle">
+              <input type="checkbox" id="confetti-toggle" checked onchange="toggleConfetti(this)">
+              <div class="stoggle-track"></div>
+              <div class="stoggle-thumb"></div>
+            </label>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">回答正确提示</span>
+            <label class="stoggle">
+              <input type="checkbox" id="correct-hint-toggle" checked onchange="toggleCorrectHint(this)">
+              <div class="stoggle-track"></div>
+              <div class="stoggle-thumb"></div>
+            </label>
+          </div>
+          <div class="sheet-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <span class="sheet-row-lbl">回答正确文案</span>
+            <input type="text" id="phrase-correct" class="phrase-input" value="回答正确" oninput="onPhraseChange('correct',this.value)">
+          </div>
         </div>
       </div>
 
@@ -814,9 +842,14 @@ body {
             </label>
           </div>
           <div class="sheet-row">
-            <span class="sheet-row-lbl">答案播报延迟</span>
+            <span class="sheet-row-lbl">练习播报延迟</span>
             <input type="range" min="0.5" max="3" value="1.2" step="0.1" id="dbg-delay" oninput="onDelayChange(this.value)">
             <span class="sheet-row-val" id="dbg-delay-val">1.2s</span>
+          </div>
+          <div class="sheet-row">
+            <span class="sheet-row-lbl">浏览播报延迟</span>
+            <input type="range" min="0.5" max="3" value="1.2" step="0.1" id="dbg-browse-delay" oninput="onBrowseDelayChange(this.value)">
+            <span class="sheet-row-val" id="dbg-browse-delay-val">1.2s</span>
           </div>
           <div class="sheet-row">
             <span class="sheet-row-lbl">语速</span>
@@ -1146,7 +1179,8 @@ let qIdx = 0, sel = null, revealed = false, wrongCount = 0;
 let nRaf = null, nStart = null;
 let NDUR = 6000;       // 练习模式倒计时（毫秒），0=手动
 let BDUR = 4000;       // 浏览模式倒计时（毫秒），0=手动
-let SPEAK_DELAY = 1200; // 答案播报延迟（毫秒）
+let SPEAK_DELAY        = 1200; // 练习答案播报延迟（毫秒）
+let BROWSE_SPEAK_DELAY = 1200; // 浏览答案播报延迟（毫秒）
 
 // 答题提示
 let QUIZ_PROMPT_ON   = true;    // 答题提示开关
@@ -1172,12 +1206,21 @@ let TTS_VOICE_NAME   = '';      // 音色名称，空=自动选中文音色
 
 let OPT_COUNT = 3;
 let OPT_TOUCH_DELAY = 120; // 防误触：手指按住至少多少ms才算有效点击（毫秒）
-let currentAudio = null;  // 当前播放的 Audio 对象，onNext 时停止
+let currentAudio = null;
+
+// 浏览模式答案显示延迟
+let BROWSE_ANSWER_DELAY = 3000; // 毫秒
+
+// 答对反馈
+let CONFETTI_ON       = true;   // 撒花动画开关
+let CORRECT_HINT_ON   = true;   // 回答正确语音开关
+let PHRASE_CORRECT    = '回答正确'; // 回答正确文案
 
 // 进入题目时的语音计时器
 let tQuizPromptTimer = null;
 let tOptHintTimer    = null;
 let tAnswerTimer     = null;  // 答案播报延迟 timer
+let sessionId        = 0;     // 每次进入练习页自增，语音链检查id终止跨页面播报
 
 // ── Home nav ───────────────────────────────────────────────────
 function renderDeckList() {
@@ -1201,7 +1244,7 @@ function renderDeckList() {
           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
         </svg>
       </button>`;
-    return `<div class="deck-card${i===0?' selected':''}" data-deck="${m.key}" onclick="selectDeck(this)">
+    return `<div class="deck-card${m.key === currentDeck ? ' selected' : ''}" data-deck="${m.key}" onclick="selectDeck(this)">
       <div class="deck-info"><div class="deck-name">${m.name}</div></div>
       <div class="deck-stats">
         <div class="deck-stat"><span class="deck-stat-num due" data-deck="${m.key}">${dueVal}</span><span class="deck-stat-lbl">到期</span></div>
@@ -1210,7 +1253,9 @@ function renderDeckList() {
       ${delBtn}
     </div>`;
   }).join('');
-  if (!currentDeck && DECKS_META.length) currentDeck = DECKS_META[0].key;
+  if (!currentDeck && DECKS_META.length) {
+    currentDeck = DECKS_META[0].key;
+  }
 }
 
 function selectDeck(el) {
@@ -1291,6 +1336,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function _launch(mode) {
+  sessionId++;
   currentMode = mode;
   Qs = getDeck(currentDeck);
   if (mode === 'browse') Qs = Qs.map(q => ({ ...q, browse: true }));
@@ -1301,6 +1347,7 @@ function _launch(mode) {
   render();
 }
 function goHome() {
+  sessionId++;
   stopNRing(); stopAllPromptTimers();
   speechSynthesis.cancel();
   releaseWakeLock();
@@ -1453,12 +1500,13 @@ function speakDirect(text, onend) {
   speechSynthesis.speak(utt);
   setTimeout(() => { if (speechSynthesis.paused) speechSynthesis.resume(); }, 250);
 }
-function speakSequence(items, onDone, pause = 350) {
+function speakSequence(items, onDone, pause = 350, sid = sessionId) {
+  if (sid !== sessionId) return;  // session已切换，终止
   if (!items || items.length === 0) { if (onDone) onDone(); return; }
   const [first, ...rest] = items;
   speak(first, 0, () => {
-    if (rest.length > 0) setTimeout(() => speakSequence(rest, onDone, pause), pause);
-    else { setTimeout(() => { if (onDone) onDone(); }, pause); }
+    if (rest.length > 0) setTimeout(() => speakSequence(rest, onDone, pause, sid), pause);
+    else { setTimeout(() => { if (onDone && sid === sessionId) onDone(); }, pause); }
   });
 }
 
@@ -1492,7 +1540,9 @@ function speakOptHint(opts) {
   }
 
   // 第三步：顺序播报，pause 片段用 setTimeout 插入停顿
+  const sid = sessionId;
   function playParts(arr) {
+    if (sid !== sessionId) return;  // session已切换，终止
     if (!arr.length) return;
     const [head, ...tail] = arr;
     if (head.type === 'pause') {
@@ -1524,7 +1574,8 @@ function render() {
   // Browse mode: skip options, auto-reveal
   if (q.browse) {
     document.getElementById('opts-zone').style.display = 'none';
-    document.getElementById('content').classList.add('revealed');
+    document.getElementById('content').classList.remove('revealed');
+    document.getElementById('answer-panel').className = 'answer-panel'; // 确保隐藏
     document.getElementById('subbtn').className = 'subbtn gone';
     revealBrowse(q);
     return;
@@ -1583,38 +1634,51 @@ function render() {
 function revealBrowse(q) {
   const answerName = q.name || q.options[q.correct];
   const hints = READ_HINT && q.details && q.details.length ? q.details : [];
+  const sid = sessionId;
 
+  // 下一张按钮立即显示
+  const nb0 = document.getElementById('nxtbtn');
+  nb0.classList.add('show');
+  document.querySelector('.btm').classList.add('active');
+
+  // 答案面板预填充但不显示
   document.getElementById('answer-panel').className = 'answer-panel';
   document.getElementById('ans-word').textContent = answerName;
   document.getElementById('ans-word').className = 'answer-word';
   const detailsEl = document.getElementById('ans-details');
   detailsEl.innerHTML = '';
-  (q.details||[]).forEach((txt,i) => {
+  (q.details||[]).forEach((txt, i) => {
     const item = document.createElement('div');
-    item.className='detail-item';
-    item.innerHTML=`<div class="detail-dot"></div><div class="detail-txt">${txt}</div>`;
+    item.className = 'detail-item';
+    item.innerHTML = `<div class="detail-dot"></div><div class="detail-txt">${txt}</div>`;
     detailsEl.appendChild(item);
-    setTimeout(()=>item.classList.add('show'), 300 + i*120);
   });
-  setTimeout(()=>document.getElementById('answer-panel').classList.add('show'), 30);
 
-  // show next button immediately — clickable right away
-  const nb0=document.getElementById('nxtbtn');
-  nb0.classList.add('show');
-  document.querySelector('.btm').classList.add('active');
-
-  // 答案播报延迟后播放
   tAnswerTimer = setTimeout(() => {
     tAnswerTimer = null;
-    const startCountdown = () => startNRing();
+    if (sid !== sessionId) return;
+
+    // 语音开始播放的同时，启动文字显示计时
+    setTimeout(() => {
+      if (sid !== sessionId) return;
+      document.getElementById('content').classList.add('revealed');
+      document.getElementById('answer-panel').classList.add('show');
+      document.querySelectorAll('.detail-item').forEach((item, i) => {
+        setTimeout(() => item.classList.add('show'), 100 + i * 120);
+      });
+    }, BROWSE_ANSWER_DELAY);
+
+    // 语音播完后启动倒计时
+    const startCountdown = () => { if (sid === sessionId) startNRing(); };
     if (hints.length) {
       playAnswer(q, () => {
-        setTimeout(() => speakSequence(hints, startCountdown), 400);
+        if (sid !== sessionId) return;
+        speakSequence(hints, startCountdown, 400, sid);
       });
     } else {
-      playAnswer(q, () => { setTimeout(startCountdown, 300); });
+      playAnswer(q, () => { if (sid === sessionId) startCountdown(); });
     }
-  }, SPEAK_DELAY);
+  }, BROWSE_SPEAK_DELAY);
 }
 
 // ── Select ─────────────────────────────────────────────────────
@@ -1636,7 +1700,8 @@ function onSel(e, idx, btn) {
   const q = Qs[qIdx];
   if (idx === q.correct) {
     tone('ok');
-    setTimeout(spawnConfetti, 100);
+    if (CONFETTI_ON) setTimeout(spawnConfetti, 100);
+    if (CORRECT_HINT_ON) setTimeout(() => speakDirect(PHRASE_CORRECT, null), 300);
     revealAnswer();
   } else {
     wrongCount++;
@@ -1706,14 +1771,20 @@ function revealAnswer() {
   // 答案播报延迟后播放，优先录音，无录音用 TTS
   tAnswerTimer = setTimeout(() => {
     tAnswerTimer = null;
-    const startCountdown = () => startNRing();
-    if (hints.length) {
-      playAnswer(q, () => {
-        setTimeout(() => speakSequence(hints, startCountdown), 400);
-      });
-    } else {
-      playAnswer(q, () => { setTimeout(startCountdown, 300); });
-    }
+    const sid = sessionId;
+    const startCountdown = () => { if (sid === sessionId) startNRing(); };
+
+    // 答案名称播完后：播 details → 倒计时
+    const afterAnswer = () => {
+      if (sid !== sessionId) return;
+      if (hints.length) {
+        setTimeout(() => speakSequence(hints, startCountdown, 400, sid), 200);
+      } else {
+        startCountdown();
+      }
+    };
+
+    playAnswer(q, afterAnswer);
   }, SPEAK_DELAY);
 }
 
@@ -1865,12 +1936,26 @@ function toggleWrongHint(cb) {
   localStorage.setItem('wrongHintOn', WRONG_HINT_ON ? '1' : '0');
 }
 
+function onBrowseAnsDelayChange(v) {
+  BROWSE_ANSWER_DELAY = parseFloat(v) * 1000;
+  document.getElementById('dbg-browse-ans-delay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
+  localStorage.setItem('browseAnsDelay', v);
+}
+function toggleConfetti(cb) {
+  CONFETTI_ON = cb.checked;
+  localStorage.setItem('confettiOn', CONFETTI_ON ? '1' : '0');
+}
+function toggleCorrectHint(cb) {
+  CORRECT_HINT_ON = cb.checked;
+  localStorage.setItem('correctHintOn', CORRECT_HINT_ON ? '1' : '0');
+}
+
 function onPhraseChange(key, val) {
-  // 中英文句号统一转为英文 . 存储（停顿符）
   const normalize = s => s.replace(/。/g, '.');
   if (key === 'select')  { PHRASE_SELECT   = normalize(val) || '请选择答案';              localStorage.setItem('phraseSelect',  PHRASE_SELECT); }
   if (key === 'wrong')   { PHRASE_WRONG    = normalize(val) || '不要着急，再试一次';       localStorage.setItem('phraseWrong',   PHRASE_WRONG); }
   if (key === 'optHint') { PHRASE_OPT_HINT = normalize(val) || '请在{A}.{B}.{C}中选择一个'; localStorage.setItem('phraseOptHint', PHRASE_OPT_HINT); }
+  if (key === 'correct') { PHRASE_CORRECT  = val || '回答正确';                           localStorage.setItem('phraseCorrect', PHRASE_CORRECT); }
 }
 
 function onQpDelayChange(v) {
@@ -1887,6 +1972,11 @@ function onDelayChange(v) {
   SPEAK_DELAY = parseFloat(v) * 1000;
   document.getElementById('dbg-delay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
   localStorage.setItem('delay', v);
+}
+function onBrowseDelayChange(v) {
+  BROWSE_SPEAK_DELAY = parseFloat(v) * 1000;
+  document.getElementById('dbg-browse-delay-val').textContent = `${parseFloat(v).toFixed(1)}s`;
+  localStorage.setItem('browseDelay', v);
 }
 
 function onTtsRateChange(v) {
@@ -1970,6 +2060,16 @@ function loadSettings() {
   const pw = localStorage.getItem('phraseWrong');
   if (pw) PHRASE_WRONG = pw;
 
+  // 浏览答案延迟 / 答对反馈
+  const browseAnsDelay = localStorage.getItem('browseAnsDelay');
+  if (browseAnsDelay) BROWSE_ANSWER_DELAY = parseFloat(browseAnsDelay) * 1000;
+  const confettiOn = localStorage.getItem('confettiOn');
+  if (confettiOn !== null) CONFETTI_ON = confettiOn === '1';
+  const correctHintOn = localStorage.getItem('correctHintOn');
+  if (correctHintOn !== null) CORRECT_HINT_ON = correctHintOn === '1';
+  const phraseCorrect = localStorage.getItem('phraseCorrect');
+  if (phraseCorrect) PHRASE_CORRECT = phraseCorrect;
+
   // TTS 音色参数
   const ttsRate = localStorage.getItem('ttsRate');
   if (ttsRate) TTS_RATE = parseFloat(ttsRate);
@@ -1981,6 +2081,8 @@ function loadSettings() {
   // 答案播报延迟
   const delay = localStorage.getItem('delay');
   if (delay) SPEAK_DELAY = parseFloat(delay) * 1000;
+  const browseDelay = localStorage.getItem('browseDelay');
+  if (browseDelay) BROWSE_SPEAK_DELAY = parseFloat(browseDelay) * 1000;
 
   // 选项数量 / 倒计时 / 防误触
   const oc = localStorage.getItem('optCount');
@@ -2023,6 +2125,16 @@ function loadSettings() {
     const pohEl = document.getElementById('phrase-opt-hint');
     if (pohEl) pohEl.value = PHRASE_OPT_HINT;
 
+    // 浏览答案延迟 / 答对反馈
+    const badEl = document.getElementById('dbg-browse-ans-delay');
+    if (badEl && browseAnsDelay) { badEl.value = browseAnsDelay; document.getElementById('dbg-browse-ans-delay-val').textContent = `${parseFloat(browseAnsDelay).toFixed(1)}s`; }
+    const cfEl = document.getElementById('confetti-toggle');
+    if (cfEl) cfEl.checked = CONFETTI_ON;
+    const chEl = document.getElementById('correct-hint-toggle');
+    if (chEl) chEl.checked = CORRECT_HINT_ON;
+    const pcEl = document.getElementById('phrase-correct');
+    if (pcEl) pcEl.value = PHRASE_CORRECT;
+
     // TTS 参数同步
     const rateEl = document.getElementById('tts-rate');
     if (rateEl) { rateEl.value = TTS_RATE; document.getElementById('tts-rate-val').textContent = TTS_RATE.toFixed(2); }
@@ -2044,6 +2156,8 @@ function loadSettings() {
     if (ohdEl && ohDelay) { ohdEl.value = ohDelay; document.getElementById('dbg-ohdelay-val').textContent = `${parseFloat(ohDelay).toFixed(1)}s`; }
     const dlEl = document.getElementById('dbg-delay');
     if (dlEl && delay) { dlEl.value = delay; document.getElementById('dbg-delay-val').textContent = `${parseFloat(delay).toFixed(1)}s`; }
+    const bdlEl = document.getElementById('dbg-browse-delay');
+    if (bdlEl && browseDelay) { bdlEl.value = browseDelay; document.getElementById('dbg-browse-delay-val').textContent = `${parseFloat(browseDelay).toFixed(1)}s`; }
     const ndurEl = document.getElementById('dbg-ndur');
     if (ndurEl && ndur) { ndurEl.value = ndur; document.getElementById('dbg-ndur-val').textContent = ndur === '0' ? '手动' : `${ndur}s`; }
     const bdurEl = document.getElementById('dbg-bdur');
