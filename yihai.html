@@ -1311,10 +1311,12 @@ async function srsPut(store, key, val) {
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readwrite');
     const os = tx.objectStore(store);
-    // keyPath store（TRIAL_STORE 用 keyPath:'trial_id'）不能传外部 key
-    if (os.keyPath) os.put(val);
-    else os.put(val, key);
-    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+    // keyPath store（如 TRIAL_STORE）用 put(val) 不传外部 key
+    // out-of-line key store（CTS_STORE, POOL_STORE）用 put(val, key)
+    const req = os.keyPath ? os.put(val) : os.put(val, key);
+    req.onerror = e => rej(e.target.error);
+    tx.oncomplete = () => res();
+    tx.onerror    = e => rej(e.target.error);
   });
 }
 async function srsGetAll(store) {
@@ -1579,24 +1581,23 @@ async function updatePoolStatus(deckKey, cardId) {
 // ── getDeckStats (SRS-aware) —— 直接查 CTS，数据最准确
 async function getDeckStatsAsync(deckKey) {
   await syncPoolForDeck(deckKey);
-  const pool    = await getPool(deckKey);
-  const sc      = getSessionCount();
-  const today   = todayStr();
-  const dp      = getDailyProgress();
-
+  const pool  = await getPool(deckKey);
+  const sc    = getSessionCount();
+  const today = todayStr();
+  const dp    = getDailyProgress();
   let due = 0, newC = 0;
-
   for (const e of pool) {
     if (!e.is_active) continue;
-    // 新卡（完全未开始）
     if (e.status === 'pending') { newC++; continue; }
-    // 直接读 T1 的 CTS 判断是否到期（比 pool 冗余字段更准确）
+    // 读 T1 的 CTS 判断到期
     const t1 = await srsGet(CTS_STORE, ctsKey(deckKey, e.card_id, 'T1'));
-    if (t1 && isDue(t1, sc, today)) due++;
-    // 如果没有 CTS（introducing 但还没答过），也算到期
-    if (!t1 && e.status === 'introducing') due++;
+    if (!t1) {
+      // 有 pool entry 但没有 CTS：刚导入还未练过，算新卡
+      newC++;
+    } else if (isDue(t1, sc, today)) {
+      due++;
+    }
   }
-
   return { due, new: newC, done: dp.quiz_cards_completed };
 }
 
@@ -2365,8 +2366,8 @@ function revealAnswer() {
     }
   }, SPEAK_DELAY);
 
-  // ── 3. SRS 書き込み（非同期、UI をブロックしない）
-  if (currentMode === 'quiz' && q._srs && q._srs.qType === 'T1') {
+  // ── SRS 写入（非同步，不阻塞 UI）
+  if (currentMode === 'quiz' && q._srs) {
     _writeSrsT1(q, isOk).catch(err => console.warn('SRS write error', err));
   }
 }
@@ -3026,11 +3027,12 @@ async function loadStatsCards() {
     const card = allCards.find(c => c.id === entry.card_id);
     if (!card) continue;
     const t1  = await srsGet(CTS_STORE, ctsKey(currentDeck, card.id, 'T1'));
-    const rep = t1 ? t1.repetitions : 0;
-    const ds  = t1 ? t1.decline_score : null;
-    const due = t1 ? isDue(t1, sc, today) : (entry.status !== 'pending');
+    const rep  = t1 ? t1.repetitions : 0;
+    const ds   = t1 ? t1.decline_score : null;
+    // 有 CTS 才判断到期；无 CTS = 从未练过，不算"今日到期"
+    const due  = t1 ? isDue(t1, sc, today) : false;
     const next = t1 ? t1.next_date_cap : null;
-    const status = entry.status === 'pending' ? 'pending' : entry.status;
+    const status = entry.status;
     rows.push({ card, entry, t1, rep, ds, due, next, status });
   }
 
